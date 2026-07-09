@@ -1,10 +1,10 @@
+^rattlerthis\.Rproj$
 ^src/\.cargo$
 ^src/rust/vendor$
 ^src/rust/target$
 ^src/Makevars$
 ^src/Makevars\.win$
 ^LICENSE\.md$
-^rattlerthis\.Rproj$
 ^renv$
 ^renv\.lock$
 ^\.Rproj\.user$
