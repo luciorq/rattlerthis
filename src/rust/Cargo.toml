@@ -1,0 +1,31 @@
+[package]
+name = 'rattlerthis'
+publish = false
+version = '0.1.0'
+edition = '2021'
+rust-version = '1.75'
+
+[lib]
+crate-type = [ 'rlib', 'staticlib' ]
+name = 'rattlerthis'
+
+[[bin]]
+name = 'document'
+path = 'document.rs'
+
+[dependencies]
+extendr-api = '0.9'
+tokio = { version = '1', default-features = false, features = ['rt-multi-thread'] }
+thiserror = '2'
+
+rattler = { version = '0.46', default-features = false, features = ['rustls'] }
+rattler_conda_types = { version = '0.47' }
+rattler_solve = { version = '7', default-features = false, features = ['resolvo'] }
+rattler_repodata_gateway = { version = '0.29', default-features = false, features = ['gateway', 'rustls'] }
+rattler_shell = { version = '0.27' }
+rattler_virtual_packages = { version = '3' }
+rattler_cache = { version = '0.10', default-features = false, features = ['rustls'] }
+
+[profile.release]
+lto = true
+codegen-units = 1
