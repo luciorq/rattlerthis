@@ -38,3 +38,17 @@ uv.lock
 *.so
 *.dylib
 *.dll
+src/rust/vendor
+src/Makevars
+src/Makevars.win
+.Rdata
+revdep
+.Rprofile
+inst/doc
+**/.quarto/
+docs
+*.RData
+*.Rhistory
+*.gz
+.quarto
+.positai

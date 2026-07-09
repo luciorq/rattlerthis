@@ -1,0 +1,35 @@
+Package: rattlerthis
+Title: Run Any CLI Tool on a 'Conda' Environment Powered by 'rattler'
+Version: 0.0.0.9000
+Authors@R:
+    person("Lucio", "Queiroz", , "luciorqueiroz@gmail.com", role = c("aut", "cre", "cph"))
+Description: Creates and manages 'Conda' environments and runs command
+    line tools inside them, without shelling out to an external package
+    manager binary. Environment solving, package installation, and shell
+    activation are implemented natively via Rust bindings (using
+    'rextendr') to the 'rattler' library
+    (<https://github.com/conda/rattler>), the same engine that powers
+    'pixi'.
+License: MIT + file LICENSE
+URL: https://github.com/luciorq/rattlerthis
+BugReports: https://github.com/luciorq/rattlerthis/issues
+Depends:
+    R (>= 4.2)
+Imports:
+    cli,
+    fs,
+    jsonlite,
+    processx,
+    rlang,
+    tibble,
+    tools,
+    withr
+Suggests:
+    curl,
+    testthat (>= 3.0.0)
+Config/rextendr/version: 0.5.0
+Config/testthat/edition: 3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.0.0
+SystemRequirements: Cargo (Rust's package manager), rustc >= 1.75.0
