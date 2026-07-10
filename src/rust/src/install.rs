@@ -139,10 +139,24 @@ pub fn solve_and_install(input: InstallInput) -> RtResult<InstallOutcome> {
         .with_package_cache(PackageCache::new(input.pkgs_cache_dir.clone()))
         .finish();
 
+    // Every platform-specific subdir has a sibling `noarch` subdir carrying
+    // pure-Python (and other platform-independent) packages. Omitting it
+    // here meant any dependency chain touching a noarch package (`pip`,
+    // `setuptools`, `tzdata`, ...) came back unsolvable — the gateway only
+    // fetches exactly the platforms it's given, it does not add `noarch` on
+    // its own. Compiled-only packages like the `xz`/`zstd` smoke test never
+    // touch a noarch package, which is why this didn't show up until someone
+    // tried installing something with real Python dependencies.
+    let query_platforms = if platform == Platform::NoArch {
+        vec![platform]
+    } else {
+        vec![platform, Platform::NoArch]
+    };
+
     let query_specs_for_gateway = query_specs.clone();
     let repodata = runtime().block_on(async move {
         gateway
-            .query(channels, vec![platform], query_specs_for_gateway)
+            .query(channels, query_platforms, query_specs_for_gateway)
             .recursive(true)
             .execute()
             .await

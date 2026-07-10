@@ -104,6 +104,18 @@ Platform defaults to `rattler_conda_types::Platform::current()`. An explicit
 forward-compatibility, but only same-platform solving is exercised/guaranteed
 in this milestone — see TODO.md for cross-platform solving.
 
+The gateway is queried for `[platform, Platform::NoArch]`, not just
+`[platform]`: every conda channel splits packages between a
+platform-specific subdir (`linux-64`, `osx-arm64`, ...) and a sibling
+`noarch` subdir for platform-independent packages (most of the Python
+ecosystem — `pip`, `setuptools`, `tzdata`, and so on). The gateway only
+fetches exactly the platforms it's told to; it does not add `noarch` on its
+own. Missing this initially meant any dependency chain touching a noarch
+package came back "unsolvable" — invisible in testing that only used
+compiled-only packages (`xz`, `zstd`), but broke on essentially anything
+Python-flavored. Regression test: `tests/testthat/test-create-env.R`
+("resolves packages with noarch dependencies").
+
 ## Installation
 
 `rattler::install::Installer` links the resolved records into

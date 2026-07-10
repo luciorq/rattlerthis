@@ -45,6 +45,21 @@ Deliberate deviations from the original plan, discovered while implementing:
   plain directory-and-JSON read with no solving/installing involved, so a
   Rust round-trip would add nothing.
 
+## Fixed bugs
+
+- **2026-07-09 — solving failed for any package with a `noarch` dependency**
+  (reported as "environment solving is not working on macOS arm64", but not
+  actually platform-specific). `solve_and_install()` in
+  `src/rust/src/install.rs` queried the gateway for `vec![platform]` only;
+  channels split packages between a platform subdir and a sibling `noarch`
+  subdir, and the gateway doesn't add `noarch` on its own. Any dependency
+  chain touching a noarch package (`pip`, `setuptools`, `tzdata`, most of
+  the Python ecosystem) came back "unsolvable". Invisible during initial
+  testing because the smoke test only used compiled-only packages (`xz`,
+  `zstd`), which never touch noarch. Fixed by querying
+  `[platform, Platform::NoArch]`. See PLAN.md ("Repodata fetching and
+  solving") and the regression test in `tests/testthat/test-create-env.R`.
+
 ## Deferred (known limitations, not yet implemented)
 
 - **Interrupt handling**: a blocking `block_on()` solve/install cannot be
@@ -64,19 +79,25 @@ Deliberate deviations from the original plan, discovered while implementing:
 - **Post-link / pre-unlink scripts**: `Installer` runs with
   `execute_link_scripts = false`. Packages that rely on these for
   correctness may end up incompletely configured.
-- **Progress reporting**: solve/install progress goes through `rprintln!`
-  only. A real `Reporter` bridging into an R callback (for progress bars,
-  `cli::cli_progress_bar()`, etc.) is not implemented — see the `PyReporter`
-  pattern in `py-rattler`'s `installer.rs` for prior art.
+- **Progress reporting**: no `Reporter` is attached to the `Gateway` query or
+  the `Installer` at all yet — `verbose` only toggles R-side
+  before/after messages, there's no per-download/per-link progress. See the
+  `PyReporter` pattern in `py-rattler`'s `installer.rs` for prior art on
+  bridging this back into a caller-supplied callback.
 - **CRAN packaging**: no vendoring story (`cargo vendor`), no MSRV pin
   matching CRAN's toolchain policy, no `R CMD check --as-cran` pass yet.
   Installation is GitHub-only for now and requires a working Rust toolchain
   on the user's machine.
-- **`env_file` support in `create_env()`**: signature reserves the
-  parameter (for `environment.yml`-style specs) but it is not implemented
-  yet.
+- **`env_file` support in `create_env()`**: not in the signature yet
+  (`environment.yml`-style specs aren't parsed). Add the parameter when the
+  parsing is actually implemented, not before.
 - **Windows support**: `rattler_shell`/`Activator` support Windows shells,
   but this hasn't been build- or run-tested on Windows yet.
+- **macOS build dependencies**: haven't confirmed the Rust crate builds
+  cleanly on macOS arm64 from a clean toolchain (Xcode CLT version, whether
+  `aws-lc-sys`/`ring` pull in a `cmake`/`nasm` requirement transitively via
+  the TLS stack). Worth a clean-machine build check before calling macOS
+  arm64 supported.
 
 ## Later ideas (not scheduled)
 
