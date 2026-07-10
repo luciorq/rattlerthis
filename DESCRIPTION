@@ -1,6 +1,6 @@
 Package: rattlerthis
 Title: Run Any CLI Tool on a 'Conda' Environment Powered by 'rattler'
-Version: 0.0.0.9000
+Version: 0.0.0.9001
 Authors@R:
     person("Lucio", "Queiroz", , "luciorqueiroz@gmail.com", role = c("aut", "cre", "cph"))
 Description: Creates and manages 'Conda' environments and runs command
@@ -27,9 +27,12 @@ Imports:
 Suggests:
     curl,
     testthat (>= 3.0.0)
+Config/Needs/dev: devtools, pkgload, remotes, rcmdcheck, covr, testthat,
+    usethis, pak, knitr, quarto, pkgdown, roxygen2, roxygen2md, lintr,
+    styler, rextendr
 Config/rextendr/version: 0.5.0
+Config/roxygen2/markdown: TRUE
+Config/roxygen2/version: 8.0.0
 Config/testthat/edition: 3
 Encoding: UTF-8
-Roxygen: list(markdown = TRUE)
-RoxygenNote: 8.0.0
 SystemRequirements: Cargo (Rust's package manager), rustc >= 1.75.0
