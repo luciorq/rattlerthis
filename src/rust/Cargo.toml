@@ -20,11 +20,22 @@ thiserror = '2'
 
 rattler = { version = '0.46', default-features = false, features = ['rustls'] }
 rattler_conda_types = { version = '0.47' }
+rattler_digest = { version = '1', default-features = false }
 rattler_solve = { version = '7', default-features = false, features = ['resolvo'] }
 rattler_repodata_gateway = { version = '0.29', default-features = false, features = ['gateway', 'rustls'] }
 rattler_shell = { version = '0.27' }
 rattler_virtual_packages = { version = '3' }
 rattler_cache = { version = '0.10', default-features = false, features = ['rustls'] }
+url = '2'
+
+# Wheel installation (the `conda-pypi` channel serves raw `.whl` files that
+# rattler's own Installer/PackageCache do not yet know how to fetch or link;
+# see PLAN.md "Wheel packages").
+reqwest = { version = '0.13', default-features = false, features = ['rustls'] }
+zip = { version = '8', default-features = false, features = ['deflate'] }
+
+[dev-dependencies]
+tempfile = '3'
 
 [profile.release]
 lto = true

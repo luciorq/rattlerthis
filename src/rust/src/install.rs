@@ -11,11 +11,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use rattler::install::{Installer, InstallerError};
+use rattler::install::{Installer, PythonInfo};
 use rattler_cache::package_cache::PackageCache;
 use rattler_conda_types::{
-    Channel, ChannelConfig, GenericVirtualPackage, MatchSpec, PackageName, Platform,
-    PrefixRecord, RepoDataRecord,
+    package::DistArchiveType, Channel, ChannelConfig, GenericVirtualPackage, MatchSpec,
+    PackageName, Platform, PrefixRecord, RepoDataRecord,
 };
 use rattler_repodata_gateway::Gateway;
 use rattler_solve::{resolvo, ChannelPriority, SolverImpl, SolverTask};
@@ -23,6 +23,7 @@ use rattler_virtual_packages::{VirtualPackageOverrides, VirtualPackages};
 
 use crate::error::{RtError, RtResult};
 use crate::runtime::runtime;
+use crate::wheel;
 
 pub struct InstallOutcome {
     pub prefix: PathBuf,
@@ -68,6 +69,33 @@ fn parse_channels(channels: &[String], config: &ChannelConfig) -> RtResult<Vec<C
         .collect()
 }
 
+/// `channels` plus whatever channel each already-installed package actually
+/// came from (tracked on its `RepoDataRecord`).
+///
+/// Without this, a call like `install(packages = "xz")` — defaulting to
+/// `channels = "conda-forge"` — would only query conda-forge; the bare-name
+/// "keep" spec generated for an existing `conda-pypi::cowsay` install would
+/// then have nothing to match against (conda-pypi never got queried) and the
+/// solve would fail as unsolvable, breaking any environment with a package
+/// from a non-default channel the instant you `install()` anything else into
+/// it without re-listing every channel by hand.
+fn channels_with_existing(channels: Vec<Channel>, existing: &[PrefixRecord]) -> Vec<Channel> {
+    let mut seen: HashSet<String> = channels.iter().map(|c| c.base_url.to_string()).collect();
+    let mut all_channels = channels;
+    for record in existing
+        .iter()
+        .filter_map(|p| p.repodata_record.channel.as_ref())
+    {
+        if !seen.insert(record.clone()) {
+            continue;
+        }
+        if let Ok(url) = url::Url::parse(record) {
+            all_channels.push(Channel::from_url(url));
+        }
+    }
+    all_channels
+}
+
 fn parse_specs(specs: &[String]) -> RtResult<Vec<MatchSpec>> {
     specs
         .iter()
@@ -95,15 +123,16 @@ pub fn solve_and_install(input: InstallInput) -> RtResult<InstallOutcome> {
     let channels = parse_channels(&input.channels, &channel_config)?;
     let channel_priority = parse_channel_priority(&input.channel_priority);
     let existing = existing_records(&input.prefix)?;
+    let channels = channels_with_existing(channels, &existing);
 
     // Nothing new requested: just make sure the prefix exists (used by
     // `create_env(packages = NULL)`), keeping whatever is already installed.
     if input.specs.is_empty() {
+        if existing.is_empty() {
+            runtime().block_on(link_records(&input, platform, Vec::new(), &existing))?;
+        }
         let records: Vec<RepoDataRecord> =
             existing.into_iter().map(|p| p.repodata_record).collect();
-        if records.is_empty() {
-            runtime().block_on(link_records(&input, platform, Vec::new()))?;
-        }
         return Ok(InstallOutcome {
             prefix: input.prefix,
             records,
@@ -175,7 +204,7 @@ pub fn solve_and_install(input: InstallInput) -> RtResult<InstallOutcome> {
 
     let solved = resolvo::Solver::default().solve(task)?;
 
-    runtime().block_on(link_records(&input, platform, solved.records.clone()))?;
+    runtime().block_on(link_records(&input, platform, solved.records.clone(), &existing))?;
 
     Ok(InstallOutcome {
         prefix: input.prefix,
@@ -183,16 +212,146 @@ pub fn solve_and_install(input: InstallInput) -> RtResult<InstallOutcome> {
     })
 }
 
+fn is_wheel(record: &RepoDataRecord) -> bool {
+    matches!(record.identifier.archive_type, DistArchiveType::Wheel(_))
+}
+
+/// Links `records` (the complete desired state for the prefix) into it.
+///
+/// Wheel-format records (the `conda-pypi` channel and similar) are split out
+/// and handled by [`wheel::install_wheel`] instead of `Installer`: neither
+/// `Installer` nor `rattler_cache::package_cache` know how to fetch or link a
+/// raw `.whl` file (see `wheel.rs`). `Installer` only ever sees the
+/// conda-format records; the wheel package names are passed via
+/// `with_ignored_packages` so it leaves their hand-written
+/// `conda-meta/*.json` entries alone instead of treating them as extraneous
+/// and deleting them.
+///
+/// Note this deliberately does *not* use `with_installed_packages` to tell
+/// `Installer` about the conda-format side of what's already there — as
+/// tempting as that looks for symmetry, doing so runs `Installer` through a
+/// `Transaction`/`ClobberRegistry` code path
+/// (`path_resolver::PathResolver::reprioritize_packages`) that panics on a
+/// second install into the same prefix in rattler 0.46.0. Leaving it unset
+/// keeps `Installer` on its own (working) auto-discovery via
+/// `PrefixRecord::collect_minimal_from_prefix`.
 async fn link_records(
     input: &InstallInput,
     platform: Platform,
     records: Vec<RepoDataRecord>,
-) -> Result<(), InstallerError> {
+    existing: &[PrefixRecord],
+) -> RtResult<()> {
+    let (wheel_records, conda_records): (Vec<_>, Vec<_>) =
+        records.into_iter().partition(is_wheel);
+
+    let existing_wheel_names: HashSet<PackageName> = existing
+        .iter()
+        .filter(|p| is_wheel(&p.repodata_record))
+        .map(|p| p.repodata_record.package_record.name.clone())
+        .collect();
+
     Installer::new()
         .with_execute_link_scripts(false)
         .with_package_cache(PackageCache::new(input.pkgs_cache_dir.clone()))
         .with_target_platform(platform)
-        .install(&input.prefix, records)
-        .await?;
+        .with_ignored_packages(existing_wheel_names)
+        .install(&input.prefix, conda_records.clone())
+        .await
+        .map_err(RtError::from)?;
+
+    if wheel_records.is_empty() {
+        return Ok(());
+    }
+
+    let python_record = conda_records
+        .iter()
+        .find(|r| r.package_record.name.as_normalized() == "python")
+        .map(|r| &r.package_record);
+    let Some(python_record) = python_record else {
+        return Err(RtError::WheelMissingPython {
+            name: wheel_records[0]
+                .package_record
+                .name
+                .as_normalized()
+                .to_string(),
+        });
+    };
+    let python_info = PythonInfo::from_python_record(python_record, platform)
+        .map_err(|source| RtError::PythonInfo(source.to_string()))?;
+
+    let existing_wheel_keys: HashSet<(String, String, String)> = existing
+        .iter()
+        .filter(|p| is_wheel(&p.repodata_record))
+        .map(|p| record_key(&p.repodata_record))
+        .collect();
+
+    let client = reqwest::Client::new();
+    for record in &wheel_records {
+        if existing_wheel_keys.contains(&record_key(record)) {
+            continue;
+        }
+        wheel::install_wheel(&client, record, &input.prefix, &python_info, platform).await?;
+    }
+
     Ok(())
+}
+
+fn record_key(record: &RepoDataRecord) -> (String, String, String) {
+    (
+        record.package_record.name.as_normalized().to_string(),
+        record.package_record.version.to_string(),
+        record.package_record.build.clone(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for a panic previously hit here: `install()` on an
+    /// env that already has a wheel package, using a single-channel
+    /// `channels =` argument that doesn't re-list the wheel's channel. Two
+    /// separate bugs had to be fixed for this to pass: (1) the second solve
+    /// needs `channels_with_existing` to add the wheel's channel back in, or
+    /// its "keep" spec is unsolvable; (2) `link_records` must not call
+    /// `Installer::with_installed_packages` on a second install into the
+    /// same prefix — that path panics inside rattler 0.46.0's
+    /// `ClobberRegistry`/`path_resolver` (see the doc comment on
+    /// `link_records`). Requires network access; run with
+    /// `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "hits the real conda-forge/conda-pypi network"]
+    fn install_after_wheel_does_not_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("envs").join("e");
+        let repodata_cache_dir = dir.path().join("repodata_cache");
+        let pkgs_cache_dir = dir.path().join("pkgs");
+
+        let outcome1 = solve_and_install(InstallInput {
+            specs: vec!["python".into(), "conda-pypi::cowsay".into()],
+            prefix: prefix.clone(),
+            channels: vec!["conda-forge".into(), "conda-pypi".into()],
+            channel_priority: "strict".into(),
+            platform: None,
+            repodata_cache_dir: repodata_cache_dir.clone(),
+            pkgs_cache_dir: pkgs_cache_dir.clone(),
+        })
+        .expect("first solve_and_install failed");
+        assert!(outcome1.records.iter().any(|r| r.package_record.name.as_normalized() == "cowsay"));
+
+        // Deliberately omits "conda-pypi" here, matching install()'s
+        // single-channel default on the R side.
+        let outcome2 = solve_and_install(InstallInput {
+            specs: vec!["xz".into()],
+            prefix: prefix.clone(),
+            channels: vec!["conda-forge".into()],
+            channel_priority: "strict".into(),
+            platform: None,
+            repodata_cache_dir,
+            pkgs_cache_dir,
+        })
+        .expect("second solve_and_install failed");
+        assert!(outcome2.records.iter().any(|r| r.package_record.name.as_normalized() == "cowsay"));
+        assert!(outcome2.records.iter().any(|r| r.package_record.name.as_normalized() == "xz"));
+    }
 }

@@ -2656,12 +2656,17 @@ dependencies = [
  "rattler",
  "rattler_cache",
  "rattler_conda_types",
+ "rattler_digest",
  "rattler_repodata_gateway",
  "rattler_shell",
  "rattler_solve",
  "rattler_virtual_packages",
+ "reqwest",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "url",
+ "zip",
 ]
 
 [[package]]

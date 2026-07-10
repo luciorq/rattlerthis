@@ -59,6 +59,63 @@ Deliberate deviations from the original plan, discovered while implementing:
   `zstd`), which never touch noarch. Fixed by querying
   `[platform, Platform::NoArch]`. See PLAN.md ("Repodata fetching and
   solving") and the regression test in `tests/testthat/test-create-env.R`.
+- **2026-07-10 — `install()` broke after a wheel package was present**. Two
+  separate bugs, both hit while adding wheel support (see the new milestone
+  below): (1) `install()`'s default `channels = "conda-forge"` didn't
+  include whatever channel an existing wheel package came from, so the
+  "keep it installed" spec was unsolvable; fixed by
+  `channels_with_existing()` unioning in each existing record's actual
+  channel. (2) Passing an explicit installed-packages list to `Installer`
+  on a second `install()` into the same prefix panicked inside rattler
+  0.46.0's `ClobberRegistry`/`path_resolver`; fixed by using
+  `Installer::with_ignored_packages()` instead, which doesn't hit that code
+  path. See PLAN.md ("Wheel packages") and the regression tests in
+  `tests/testthat/test-wheel.R` / `src/rust/src/install.rs`'s
+  `install_after_wheel_does_not_panic`.
+
+## Milestone: wheel packages (`conda-pypi` channel) (done)
+
+Goal: packages resolved from a wheel-format channel (raw `.whl`, as served
+by `conda-pypi` and similar) install correctly, since `rattler`'s own
+`Installer`/`PackageCache` don't support that yet as published on crates.io.
+Verified 2026-07-10 with a real network solve/install/run cycle
+(`python` + `conda-pypi::cowsay`, including running its `console_scripts`
+entry point) and `tests/testthat/test-wheel.R`.
+
+- [x] `src/rust/src/wheel.rs` — download, extract, place under
+      `site-packages` per the wheel install-scheme rules, generate
+      `console_scripts` entry points, write a `conda-meta/*.json`
+- [x] `solve_and_install()`/`link_records()` partition conda vs. wheel
+      records; `Installer` only ever sees the conda side
+- [x] `channels_with_existing()` — re-solving no longer requires the caller
+      to keep repeating every channel a previously-installed package came
+      from
+- [x] `install()` after a wheel package present: no unsolvable errors, no
+      panics, wheel package survives
+
+Known limitations specific to wheel support (separate from the general
+list below):
+
+- Only `console_scripts` entry points are generated; `gui_scripts` and other
+  entry-point groups (rare for CLI-style packages, which is `rattlerthis`'s
+  focus) are ignored.
+- No wheel content verification: neither the file hash embedded in the
+  `RepoDataRecord` nor the wheel's own `RECORD` file hashes are checked
+  against what was actually downloaded.
+- `.data/data/` and `.data/headers/` wheel categories are mapped per PEP 427
+  but not exercised by any test — pure-Python packages needing them are
+  uncommon.
+- No pruning: if a solve legitimately drops a wheel package (a real conflict
+  forces its removal, not just "wasn't re-specified"), the old
+  `conda-meta/*.json` and its files are not cleaned up. This mirrors
+  `Installer`'s own all-or-nothing semantics for conda packages in v0.1 (see
+  "Later ideas" below) rather than being wheel-specific, but hasn't been
+  exercised for wheels specifically.
+- Compiled (non-pure-Python) wheels aren't a concern today since
+  `conda-pypi` itself only serves pure-Python wheels, but nothing in
+  `wheel.rs` checks a wheel's platform/ABI tag against the target
+  environment — if a future wheel channel serves compiled wheels, they'd be
+  extracted as-is with no compatibility check.
 
 ## Deferred (known limitations, not yet implemented)
 

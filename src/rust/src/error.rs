@@ -39,6 +39,45 @@ pub enum RtError {
 
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error(
+        "cannot install wheel package {name:?}: no `python` package is present in the \
+         environment. Request python alongside it, e.g. \
+         packages = c(\"python\", \"{name}\")"
+    )]
+    WheelMissingPython { name: String },
+
+    // `rattler::install::python::PythonInfoError` isn't part of that crate's
+    // public API (only `PythonInfo` itself is re-exported), so the concrete
+    // error type can't be named here — its `Display` message is captured at
+    // the call site instead.
+    #[error("failed to determine the environment's Python layout: {0}")]
+    PythonInfo(String),
+
+    #[error("failed to download wheel from {url}: {source}")]
+    WheelDownload {
+        url: String,
+        #[source]
+        source: reqwest::Error,
+    },
+
+    #[error("failed to read wheel archive for {name:?}: {source}")]
+    WheelArchive {
+        name: String,
+        #[source]
+        source: zip::result::ZipError,
+    },
+
+    #[error("failed to parse entry point {line:?} for {name:?}: {source}")]
+    WheelEntryPoint {
+        name: String,
+        line: String,
+        #[source]
+        source: rattler_conda_types::package::ParseEntryPointError,
+    },
+
+    #[error("wheel installation task panicked: {0}")]
+    TaskJoin(#[from] tokio::task::JoinError),
 }
 
 pub type RtResult<T> = Result<T, RtError>;

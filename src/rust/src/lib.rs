@@ -4,6 +4,7 @@ mod activation;
 mod error;
 mod install;
 mod runtime;
+mod wheel;
 
 fn opt(value: Nullable<String>) -> Option<String> {
     match value {

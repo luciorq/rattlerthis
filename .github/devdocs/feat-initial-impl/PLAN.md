@@ -140,6 +140,82 @@ would only know about `zstd`, and `Installer` would delete everything else in
 the prefix as unwanted. Verified with the `xz` → `install("zstd")` smoke test
 in `tests/testthat/test-install.R`.
 
+## Wheel packages
+
+Newer conda channels — `conda-pypi` chief among them — publish pure-Python
+packages as raw `.whl` files (downloaded straight from
+`files.pythonhosted.org`) instead of `.conda`/`.tar.bz2` archives.
+`rattler_conda_types` (0.47/0.48) already models this at the type level
+(`DistArchiveType::Wheel`, `RepoDataRecord.identifier`), and the solver
+resolves `MatchSpec`s against wheel records without complaint — but neither
+`rattler::install::Installer` nor `rattler_cache::package_cache` (as
+published on crates.io at the time of writing) know how to fetch or link a
+`.whl`. `rattlerthis` implements that itself, in
+`src/rust/src/wheel.rs`, rather than waiting on upstream:
+
+- `solve_and_install()` partitions the solver's resolved records into
+  conda-format and wheel-format (`is_wheel()`, keyed off
+  `identifier.archive_type`).
+- Conda-format records go through `Installer` exactly as before.
+- Wheel-format records are downloaded with a plain `reqwest::Client` (a
+  direct dependency added just for this — everything else reuses whatever
+  HTTP client `rattler_repodata_gateway` already needed) and extracted with
+  the `zip` crate (a `.whl` is a plain zip archive). Each entry is placed
+  under the environment's `site-packages` following the wheel install-scheme
+  rules (PEP 427): plain files and `<dist>-<version>.dist-info/` go straight
+  into `site-packages`; anything under `<dist>-<version>.data/<category>/` is
+  redirected per `category` (`scripts` → the env's `bin`/`Scripts` dir,
+  `purelib`/`platlib` → `site-packages`, `data` → the prefix root, `headers`
+  → `include/`).
+- `<dist>-<version>.dist-info/entry_points.txt`'s `[console_scripts]` section
+  is parsed and turned into real executables by reusing rattler's own
+  `EntryPoint::from_str` (already hardened against path traversal / command
+  injection in the script body — see its `ParseEntryPointError` variants)
+  and its `python_entry_point_template()` (the exact same script template
+  `Installer` generates for `noarch: python` packages' own entry points).
+  `get_windows_launcher()` is reused too, so Windows gets the same signed
+  `.exe` launcher `Installer` would use — untested on Windows, like the rest
+  of the crate; see TODO.md.
+- The result is written as a normal `conda-meta/<name>-<version>-<build>.json`
+  via `PrefixRecord::from_repodata_record().write_to_path()`, so `list_packages()`,
+  `env_exists()`, and the next `create_env()`/`install()`'s `existing_records()`
+  all see it exactly like any other installed package — no separate
+  bookkeeping.
+- Wheel packages require `python` to already be resolved into the same
+  environment (to know the target `site-packages`/`bin` layout via
+  `PythonInfo::from_python_record`); requesting one without `python` present
+  fails with a clear `rattlerthis_error_install` telling the user to add it.
+
+Two non-obvious fixes were needed to make `install()` work correctly on an
+environment that already has a wheel package in it — both covered by
+regression tests (`tests/testthat/test-wheel.R`,
+`src/rust/src/install.rs`'s `install_after_wheel_does_not_panic`):
+
+1. **`channels_with_existing()`**: `install()` defaults to
+   `channels = "conda-forge"`. The "keep this package" bare-name spec
+   generated for an already-installed `conda-pypi::cowsay` needs *some*
+   channel that actually has `cowsay` in it to solve against — if the
+   caller doesn't happen to re-list `conda-pypi` on every subsequent call,
+   the solve fails as unsolvable. `solve_and_install()` now unions the
+   requested `channels` with whatever channel each already-installed
+   package's `RepoDataRecord.channel` says it actually came from, so a
+   package's origin channel doesn't have to be remembered and repeated by
+   the caller forever.
+2. **No `Installer::with_installed_packages()` on a second install**:
+   passing an explicit `Vec<PrefixRecord>` for "what's currently installed"
+   (which seemed like the obvious way to tell `Installer` "these wheel
+   conda-meta entries are real, don't remove them") routes `Installer`
+   through a `Transaction`/`ClobberRegistry` code path
+   (`path_resolver::PathResolver::reprioritize_packages`) that panics on a
+   second `install()` into the same prefix, in rattler 0.46.0 — an upstream
+   bug, not something wrong with the records themselves. `link_records()`
+   instead leaves `Installer` on its own working auto-discovery
+   (`PrefixRecord::collect_minimal_from_prefix`) and uses
+   `Installer::with_ignored_packages()` with just the wheel package *names*,
+   which is documented and tested upstream to leave those entries alone
+   without needing the fuller (and apparently panic-triggering) explicit
+   installed-packages path.
+
 ## Return values
 
 `create_env()` and `install()` have no subprocess stdout/stderr to hand back
