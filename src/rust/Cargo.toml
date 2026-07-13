@@ -18,11 +18,11 @@ extendr-api = '0.9'
 tokio = { version = '1', default-features = false, features = ['rt-multi-thread'] }
 thiserror = '2'
 
-rattler = { version = '0.46', default-features = false, features = ['rustls'] }
-rattler_conda_types = { version = '0.47' }
+rattler = { version = '0.47', default-features = false, features = ['rustls'] }
+rattler_conda_types = { version = '0.48' }
 rattler_digest = { version = '1', default-features = false }
 rattler_solve = { version = '7', default-features = false, features = ['resolvo'] }
-rattler_repodata_gateway = { version = '0.29', default-features = false, features = ['gateway', 'rustls'] }
+rattler_repodata_gateway = { version = '0.30', default-features = false, features = ['gateway', 'rustls'] }
 rattler_shell = { version = '0.27' }
 rattler_virtual_packages = { version = '3' }
 rattler_cache = { version = '0.10', default-features = false, features = ['rustls'] }

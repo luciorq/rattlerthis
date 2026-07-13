@@ -3,6 +3,16 @@
 Status and roadmap for `rattlerthis`. See `PLAN.md` for the design behind
 these decisions.
 
+Dependency currency: the rattler-family crates (`rattler`,
+`rattler_conda_types`, `rattler_solve`, `rattler_repodata_gateway`,
+`rattler_shell`, `rattler_virtual_packages`, `rattler_cache`) ship from one
+monorepo in lockstep and move fast. Last checked/bumped to latest 2026-07-10
+(`rattler` 0.47.0, `rattler_conda_types` 0.48.0, `rattler_repodata_gateway`
+0.30.0, plus lockfile-only patch bumps for the rest). When bumping again,
+bump all of them together — mismatched versions across this family can
+resolve to two copies of the same crate in the dependency graph and fail to
+compile (hit this once with a scratch probe project during development).
+
 ## Milestone: v0.1 (done)
 
 Goal: `create_env()`, `install()`, and `run()` work end to end for the
@@ -66,12 +76,12 @@ Deliberate deviations from the original plan, discovered while implementing:
   "keep it installed" spec was unsolvable; fixed by
   `channels_with_existing()` unioning in each existing record's actual
   channel. (2) Passing an explicit installed-packages list to `Installer`
-  on a second `install()` into the same prefix panicked inside rattler
-  0.46.0's `ClobberRegistry`/`path_resolver`; fixed by using
-  `Installer::with_ignored_packages()` instead, which doesn't hit that code
-  path. See PLAN.md ("Wheel packages") and the regression tests in
-  `tests/testthat/test-wheel.R` / `src/rust/src/install.rs`'s
-  `install_after_wheel_does_not_panic`.
+  on a second `install()` into the same prefix panicked inside rattler's
+  `ClobberRegistry`/`path_resolver` (confirmed on both 0.46.0 and 0.47.0);
+  fixed by using `Installer::with_ignored_packages()` instead, which
+  doesn't hit that code path. See PLAN.md ("Wheel packages") and the
+  regression tests in `tests/testthat/test-wheel.R` /
+  `src/rust/src/install.rs`'s `install_after_wheel_does_not_panic`.
 
 ## Milestone: wheel packages (`conda-pypi` channel) (done)
 

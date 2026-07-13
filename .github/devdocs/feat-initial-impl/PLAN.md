@@ -207,8 +207,9 @@ regression tests (`tests/testthat/test-wheel.R`,
    conda-meta entries are real, don't remove them") routes `Installer`
    through a `Transaction`/`ClobberRegistry` code path
    (`path_resolver::PathResolver::reprioritize_packages`) that panics on a
-   second `install()` into the same prefix, in rattler 0.46.0 — an upstream
-   bug, not something wrong with the records themselves. `link_records()`
+   second `install()` into the same prefix — confirmed on both rattler
+   0.46.0 and 0.47.0, so it's an upstream bug, not something wrong with the
+   records themselves. `link_records()`
    instead leaves `Installer` on its own working auto-discovery
    (`PrefixRecord::collect_minimal_from_prefix`) and uses
    `Installer::with_ignored_packages()` with just the wheel package *names*,

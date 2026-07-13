@@ -232,7 +232,8 @@ fn is_wheel(record: &RepoDataRecord) -> bool {
 /// tempting as that looks for symmetry, doing so runs `Installer` through a
 /// `Transaction`/`ClobberRegistry` code path
 /// (`path_resolver::PathResolver::reprioritize_packages`) that panics on a
-/// second install into the same prefix in rattler 0.46.0. Leaving it unset
+/// second install into the same prefix, confirmed on both rattler 0.46.0
+/// and 0.47.0 (see `install_after_wheel_does_not_panic`). Leaving it unset
 /// keeps `Installer` on its own (working) auto-discovery via
 /// `PrefixRecord::collect_minimal_from_prefix`.
 async fn link_records(
@@ -315,9 +316,10 @@ mod tests {
     /// needs `channels_with_existing` to add the wheel's channel back in, or
     /// its "keep" spec is unsolvable; (2) `link_records` must not call
     /// `Installer::with_installed_packages` on a second install into the
-    /// same prefix — that path panics inside rattler 0.46.0's
-    /// `ClobberRegistry`/`path_resolver` (see the doc comment on
-    /// `link_records`). Requires network access; run with
+    /// same prefix — that path panics inside rattler's
+    /// `ClobberRegistry`/`path_resolver` (confirmed on both 0.46.0 and
+    /// 0.47.0; see the doc comment on `link_records`). Requires network
+    /// access; run with
     /// `cargo test -- --ignored`.
     #[test]
     #[ignore = "hits the real conda-forge/conda-pypi network"]
