@@ -127,6 +127,16 @@ list below):
   environment — if a future wheel channel serves compiled wheels, they'd be
   extracted as-is with no compatibility check.
 
+## Milestone: `condathis` backend adapter (done, 2026-07-15)
+
+Goal: make `rattlerthis` a conforming backend for `condathis`'s in-progress
+pluggable-backend system, as a standalone adapter that's fully testable
+without `condathis` needing to exist yet. See
+`.github/devdocs/feat-rattlerthis-backend/{PLAN,TODO}.md` for the full
+design and status — real wiring into `condathis` (S3 method registration,
+`.onLoad()` hookup) is deferred there until `condathis`'s own
+backend-abstraction milestone ships.
+
 ## Deferred (known limitations, not yet implemented)
 
 - **Interrupt handling**: a blocking `block_on()` solve/install cannot be
