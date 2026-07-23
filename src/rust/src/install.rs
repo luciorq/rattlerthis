@@ -11,7 +11,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use rattler::install::{Installer, PythonInfo};
+use rattler::install::Installer;
+#[cfg(feature = "wheels")]
+use rattler::install::PythonInfo;
 use rattler_cache::package_cache::PackageCache;
 use rattler_conda_types::{
     package::DistArchiveType, Channel, ChannelConfig, GenericVirtualPackage, MatchSpec,
@@ -23,6 +25,7 @@ use rattler_virtual_packages::{VirtualPackageOverrides, VirtualPackages};
 
 use crate::error::{RtError, RtResult};
 use crate::runtime::runtime;
+#[cfg(feature = "wheels")]
 use crate::wheel;
 
 pub struct InstallOutcome {
@@ -260,6 +263,17 @@ async fn link_records(
         .await
         .map_err(RtError::from)?;
 
+    install_wheels(wheel_records, &conda_records, &input.prefix, platform, existing).await
+}
+
+#[cfg(feature = "wheels")]
+async fn install_wheels(
+    wheel_records: Vec<RepoDataRecord>,
+    conda_records: &[RepoDataRecord],
+    prefix: &Path,
+    platform: Platform,
+    existing: &[PrefixRecord],
+) -> RtResult<()> {
     if wheel_records.is_empty() {
         return Ok(());
     }
@@ -291,12 +305,13 @@ async fn link_records(
         if existing_wheel_keys.contains(&record_key(record)) {
             continue;
         }
-        wheel::install_wheel(&client, record, &input.prefix, &python_info, platform).await?;
+        wheel::install_wheel(&client, record, prefix, &python_info, platform).await?;
     }
 
     Ok(())
 }
 
+#[cfg(feature = "wheels")]
 fn record_key(record: &RepoDataRecord) -> (String, String, String) {
     (
         record.package_record.name.as_normalized().to_string(),
@@ -305,7 +320,27 @@ fn record_key(record: &RepoDataRecord) -> (String, String, String) {
     )
 }
 
-#[cfg(test)]
+/// Built without the `wheels` feature: a solve that returned wheel-format
+/// records can't be linked, so fail clearly instead of silently ignoring
+/// them (matching what the `wheels`-enabled build reports for a missing
+/// `python` package -- a specific error, not silent partial install).
+#[cfg(not(feature = "wheels"))]
+async fn install_wheels(
+    wheel_records: Vec<RepoDataRecord>,
+    _conda_records: &[RepoDataRecord],
+    _prefix: &Path,
+    _platform: Platform,
+    _existing: &[PrefixRecord],
+) -> RtResult<()> {
+    match wheel_records.into_iter().next() {
+        None => Ok(()),
+        Some(record) => Err(RtError::WheelUnsupported {
+            name: record.package_record.name.as_normalized().to_string(),
+        }),
+    }
+}
+
+#[cfg(all(test, feature = "wheels"))]
 mod tests {
     use super::*;
 
@@ -321,6 +356,7 @@ mod tests {
     /// 0.47.0; see the doc comment on `link_records`). Requires network
     /// access; run with
     /// `cargo test -- --ignored`.
+    #[cfg(feature = "wheels")]
     #[test]
     #[ignore = "hits the real conda-forge/conda-pypi network"]
     fn install_after_wheel_does_not_panic() {

@@ -85,6 +85,13 @@ Deliberate deviations from the original plan, discovered while implementing:
 
 ## Milestone: wheel packages (`conda-pypi` channel) (done)
 
+Now gated behind the `wheels` Cargo feature (default off) as of the CRAN
+vendoring work — see PLAN.md "Vendoring and CRAN size". `cargo build
+--features wheels` re-enables it; the R-level API and generated
+`extendr-wrappers.R` are unaffected either way (`rt_install`'s signature
+doesn't change — only what happens internally when a solve returns a
+wheel-format record).
+
 Goal: packages resolved from a wheel-format channel (raw `.whl`, as served
 by `conda-pypi` and similar) install correctly, since `rattler`'s own
 `Installer`/`PackageCache` don't support that yet as published on crates.io.
@@ -161,10 +168,41 @@ backend-abstraction milestone ships.
   before/after messages, there's no per-download/per-link progress. See the
   `PyReporter` pattern in `py-rattler`'s `installer.rs` for prior art on
   bridging this back into a caller-supplied callback.
-- **CRAN packaging**: no vendoring story (`cargo vendor`), no MSRV pin
-  matching CRAN's toolchain policy, no `R CMD check --as-cran` pass yet.
-  Installation is GitHub-only for now and requires a working Rust toolchain
-  on the user's machine.
+- **CRAN packaging**: MSRV pin exists (`tools/msrv.R`), but no
+  `R CMD check --as-cran` pass yet. Installation is GitHub-only for now and
+  requires a working Rust toolchain on the user's machine.
+  - [x] Vendoring story: `src/rust/vendor.tar.xz`, built with
+        `cargo vendor-filterer` (platform-filtered to the 5 triples actually
+        shipped, `--keep-dep-kinds=no-dev`) against the `native-tls`
+        (not `rustls`) feature set, default (non-`wheels`) features only.
+        445 crates/60MB compressed/954MB unpacked → 412 crates/14MB
+        compressed/184MB unpacked. Verified: `cargo build --offline`
+        against the regenerated tree succeeds; `cargo test --lib` passes
+        with and without `--features wheels`. See PLAN.md "Vendoring and
+        CRAN size".
+  - [ ] `DESCRIPTION`'s `SystemRequirements` should mention OpenSSL
+        (Linux only — macOS/Windows use native-tls with zero extra system
+        deps) now that the TLS backend is `native-tls`, not `rustls`.
+  - [ ] Verify the regenerated vendor tree offline-builds on a real Windows
+        (`x86_64-pc-windows-gnu`/Rtools) and macOS (both arm64 and x86_64)
+        machine, not just cross-checked logically on Linux — the platform
+        list passed to `cargo vendor-filterer` was chosen from
+        `Makevars.win.in`'s target triple and known R-for-macOS
+        architectures, not verified by an actual cross/native build on
+        those OSes.
+  - [ ] `cran-comments.md`: preemptively justify the vendored tarball size
+        to CRAN reviewers (offline build requirement, not a choice) rather
+        than waiting for a reviewer to ask. Precedent to keep in mind:
+        `r-polars` never made it onto CRAN and distributes via r-universe
+        instead, specifically over vendored-dependency size — this may
+        still be a viable fallback if CRAN pushes back even after the
+        above.
+  - [ ] `cargo tree --duplicates` (or `cargo-deny`'s duplicate-version
+        check) as a CI step, so re-vendoring doesn't silently regrow
+        version drift (`hashbrown` currently resolves to 4 different
+        versions, `rand`/`getrandom`/`thiserror` to 2 each).
+  - [ ] No `R CMD check --as-cran` pass yet (`just check` exists but hasn't
+        been run against this vendoring setup end-to-end).
 - **`env_file` support in `create_env()`**: not in the signature yet
   (`environment.yml`-style specs aren't parsed). Add the parameter when the
   parsing is actually implemented, not before.

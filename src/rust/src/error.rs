@@ -40,6 +40,7 @@ pub enum RtError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[cfg(feature = "wheels")]
     #[error(
         "cannot install wheel package {name:?}: no `python` package is present in the \
          environment. Request python alongside it, e.g. \
@@ -51,9 +52,11 @@ pub enum RtError {
     // public API (only `PythonInfo` itself is re-exported), so the concrete
     // error type can't be named here — its `Display` message is captured at
     // the call site instead.
+    #[cfg(feature = "wheels")]
     #[error("failed to determine the environment's Python layout: {0}")]
     PythonInfo(String),
 
+    #[cfg(feature = "wheels")]
     #[error("failed to download wheel from {url}: {source}")]
     WheelDownload {
         url: String,
@@ -61,6 +64,7 @@ pub enum RtError {
         source: reqwest::Error,
     },
 
+    #[cfg(feature = "wheels")]
     #[error("failed to read wheel archive for {name:?}: {source}")]
     WheelArchive {
         name: String,
@@ -68,6 +72,7 @@ pub enum RtError {
         source: zip::result::ZipError,
     },
 
+    #[cfg(feature = "wheels")]
     #[error("failed to parse entry point {line:?} for {name:?}: {source}")]
     WheelEntryPoint {
         name: String,
@@ -76,8 +81,18 @@ pub enum RtError {
         source: rattler_conda_types::package::ParseEntryPointError,
     },
 
+    #[cfg(feature = "wheels")]
     #[error("wheel installation task panicked: {0}")]
     TaskJoin(#[from] tokio::task::JoinError),
+
+    /// Built without the `wheels` feature but the solve returned at least
+    /// one wheel-format record (e.g. from the `conda-pypi` channel). This
+    /// build only handles conda-format (`.conda`/`.tar.bz2`) packages.
+    #[error(
+        "package {name:?} is only available as a Python wheel (e.g. from the `conda-pypi` \
+         channel); this build of rattlerthis was compiled without wheel support"
+    )]
+    WheelUnsupported { name: String },
 }
 
 pub type RtResult<T> = Result<T, RtError>;

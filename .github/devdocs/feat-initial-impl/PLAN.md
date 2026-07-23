@@ -142,6 +142,12 @@ in `tests/testthat/test-install.R`.
 
 ## Wheel packages
 
+Gated behind the `wheels` Cargo feature (off by default — see "Vendoring and
+CRAN size" below): it's outside the minimal solve/install/activate/run
+surface the CRAN build targets. Built without it, a solve that returns a
+wheel-format record fails with a clear `RtError::WheelUnsupported` instead of
+silently dropping the package.
+
 Newer conda channels — `conda-pypi` chief among them — publish pure-Python
 packages as raw `.whl` files (downloaded straight from
 `files.pythonhosted.org`) instead of `.conda`/`.tar.bz2` archives.
@@ -216,6 +222,101 @@ regression tests (`tests/testthat/test-wheel.R`,
    which is documented and tested upstream to leave those entries alone
    without needing the fuller (and apparently panic-triggering) explicit
    installed-packages path.
+
+## Vendoring and CRAN size
+
+CRAN's build farm has no network access, so a CRAN release must ship
+`src/rust/vendor.tar.xz` (unpacked and used offline via `--offline` +
+`CARGO_HOME` pointed at `src/rust/vendor-config.toml` — see `Makevars.in` /
+`Makevars.win.in` / `tools/config.R`). A plain `cargo vendor` of the full
+`rattler`-family dependency graph, unfiltered, was 445 crates / 60MB
+compressed / **954MB unpacked** — dominated by things the shipped platforms
+never need:
+
+- Multiple major versions of the `windows`/`windows-sys` crate family
+  side by side (`windows` 0.48.0 alone was 169MB — pulled in only by
+  `winver`, a tiny transitive dep of `rattler_virtual_packages` used for
+  Windows OS-version detection).
+- The legacy `winapi` crate's precompiled MinGW import libraries, for
+  *both* `x86_64` and `i686` (106MB) — `i686` Windows hasn't been a CRAN
+  target since R for Windows went 64-bit-only.
+- `aws-lc-sys` (68MB) — `rustls`'s default crypto provider bundles a full
+  copy of AWS-LC's C/assembly source and needs `cmake`/NASM/Perl to build
+  it, an extra native-toolchain requirement beyond a Rust+cargo build that
+  CRAN's Windows/macOS machines shouldn't be assumed to have.
+- wasm32 (`web-sys`, `wasm-bindgen*`), Android (`jni`), UEFI (`r-efi`), and
+  BSD/illumos/Redox-only crates — none of which `rattlerthis` ever builds
+  for.
+
+Two changes, applied together, cut this to 412 crates / 14MB compressed /
+**184MB unpacked** (verified: `cargo build --offline` against the
+regenerated tree succeeds, `cargo test --lib` passes with and without
+`--features wheels`):
+
+1. **`native-tls` instead of `rustls`.** Every `rattler`-family crate that
+   touches HTTP (`rattler`, `rattler_repodata_gateway`, `rattler_cache`)
+   exposes a `native-tls` feature as a straight alternative to `rustls`
+   (`reqwest/native-tls` under the hood), so this needed no patching —
+   just flipping the feature flag in `src/rust/Cargo.toml`. `native-tls`
+   links the OS's own TLS: Secure Transport on macOS and SChannel on
+   Windows (**zero** vendored crypto code on either platform), and system
+   OpenSSL via `openssl-sys` on Linux (dynamically linked, not vendored —
+   `openssl-sys`'s `vendored` feature is deliberately not enabled). This
+   removes `rustls`, `aws-lc-rs`/`aws-lc-sys` or `ring`,
+   `rustls-platform-verifier`, `hyper-rustls`, `tokio-rustls`,
+   `webpki-root-certs`, and (since `reqwest`'s `http3` feature is only
+   reachable through `rustls`) `quinn`/`quinn-proto`/`quinn-udp` — none of
+   which any conda channel needs anyway. Trade-off: an OS-trusted custom
+   CA (e.g. a corporate MITM proxy) installed in the system trust store is
+   honored automatically on all three platforms via the native TLS stack;
+   this is arguably *more* correct than `rustls-platform-verifier`'s
+   partial platform coverage, not less. `SystemRequirements` in
+   `DESCRIPTION` should note OpenSSL is needed on Linux (already a de
+   facto CRAN-ecosystem requirement — the `curl` and `openssl` CRAN
+   packages need it too).
+2. **`cargo vendor-filterer` instead of `cargo vendor`**, restricted to
+   the five triples actually shipped —
+   `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`,
+   `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-gnu`
+   (R for Windows uses Rtools/MinGW, **not MSVC**) — with
+   `--keep-dep-kinds=no-dev` to also drop crates only reachable through
+   some dependency's own `[dev-dependencies]` (`proptest`, `rusty-fork`,
+   `rand_xorshift`, ...). This alone dropped the `windows`-0.48/`winver`
+   chain, all `i686`/`windows-msvc`/wasm32/Android/UEFI/BSD-only crates,
+   and every duplicate `windows-sys`/`windows` version not needed for
+   `windows-gnu` specifically. Regenerate with `just update-vendor` (the
+   `justfile` recipe is the single source of truth for the exact command --
+   not reproduced here to avoid the two copies drifting apart; it also
+   rebuilds `--offline` against the fresh tree, with and without
+   `--features wheels`, as a sanity check before you commit). This is not
+   automatic -- there is no CI step that detects a stale `vendor.tar.xz`
+   yet (see TODO.md); run it by hand after any `src/rust/Cargo.toml`/
+   `Cargo.lock` change and commit the regenerated tarball alongside.
+   Vendored for the **default** feature set (no `wheels`) — that's what
+   CRAN ships. `reqwest`/`zip` are already present unconditionally either
+   way (see below), so this vendor tree also happens to support a local
+   `--features wheels` dev build without regenerating.
+
+A third change, **gating `wheels` behind a Cargo feature** (see "Wheel
+packages" above), was applied for scope reasons — the CRAN release should
+expose only solve/install/activate/run, not the `conda-pypi` wheel-channel
+extra — but it turned out to save little vendor size: `zip` and `reqwest`
+are already unconditional dependencies of `rattler_package_streaming` (the
+`.conda` package format is itself a zip archive) and
+`rattler_repodata_gateway` respectively, confirmed by `cargo tree` showing
+only a one-crate difference between the two feature sets. Kept anyway,
+since the goal here is a minimal *surface*, not just a minimal *tarball*.
+
+Not pursued (diminishing returns relative to the two changes above):
+
+- **`icu_*` Unicode data tables** (pulled in by the `idna`/`url` crates for
+  full IDNA hostname support) — a few MB, not patchable without vendoring
+  a modified `idna_adapter` or accepting ASCII-only hostnames, which no
+  conda channel needs anyway. Revisit only if size becomes an issue again.
+- **Deduplicating remaining crate-version drift** (`hashbrown` at 4
+  versions, `rand`/`getrandom`/`thiserror` at 2 each) — real but small
+  next to what's above; `cargo tree --duplicates` in CI would catch
+  regressions here going forward.
 
 ## Return values
 

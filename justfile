@@ -259,3 +259,50 @@ link-dev-docs branch_name:
 # =============================================================================
 # Rattlerthis specific Tasks
 # =============================================================================
+
+# Regenerate `src/rust/vendor.tar.xz`, the offline vendored Rust dependency
+# tree used for CRAN builds (see `Makevars.in` / `tools/config.R`). Run this
+# after bumping any Rust dependency in `src/rust/Cargo.toml` -- especially
+# the rattler family, which TODO.md says to bump together. Filters vendored
+# crates down to the platforms rattlerthis actually ships for and to
+# `native-tls` (not `rustls`); see PLAN.md "Vendoring and CRAN size" for why.
+# Requires network access (fetches crate sources) and `cargo`; installs
+# `cargo-vendor-filterer` if missing.
+update-vendor:
+  #!/usr/bin/env bash
+  \builtin set -euo pipefail;
+  if ! command -v cargo-vendor-filterer >/dev/null 2>&1; then
+    \builtin echo "Installing cargo-vendor-filterer...";
+    cargo install cargo-vendor-filterer --locked;
+  fi;
+  work_dir="$(\mktemp -d)";
+  trap '\rm -rf "${work_dir}"' EXIT;
+  \builtin echo "Vendoring (platform-filtered, no-dev, default features)...";
+  cargo vendor-filterer \
+    --manifest-path=src/rust/Cargo.toml \
+    --platform=x86_64-unknown-linux-gnu \
+    --platform=aarch64-unknown-linux-gnu \
+    --platform=x86_64-apple-darwin \
+    --platform=aarch64-apple-darwin \
+    --platform=x86_64-pc-windows-gnu \
+    --keep-dep-kinds=no-dev \
+    "${work_dir}/vendor";
+  \builtin echo "Compressing...";
+  tar cf - -C "${work_dir}" vendor | xz -9e -T0 > src/rust/vendor.tar.xz;
+  \builtin echo "Verifying offline build against the regenerated tree...";
+  \rm -rf src/vendor src/.cargo;
+  \mkdir -p src/.cargo;
+  \cp src/rust/vendor-config.toml src/.cargo/config.toml;
+  tar xf src/rust/vendor.tar.xz -C src;
+  # Debug, not --release: LTO/codegen-units=1 make the real (release) build
+  # much slower and don't affect which crates get pulled in, which is all
+  # this is checking. `just check`/CRAN builds still go through the real
+  # --release path via Makevars separately.
+  CARGO_HOME="$(\pwd)/src/.cargo" cargo build --offline --lib \
+    --manifest-path=src/rust/Cargo.toml --target-dir "${work_dir}/target-default";
+  CARGO_HOME="$(\pwd)/src/.cargo" cargo build --offline --lib \
+    --features wheels --manifest-path=src/rust/Cargo.toml \
+    --target-dir "${work_dir}/target-wheels";
+  \rm -rf src/vendor src/.cargo;
+  \builtin echo "vendor.tar.xz regenerated: $(\du -h src/rust/vendor.tar.xz | \cut -f1)";
+  \builtin echo "Review the diff (Cargo.lock + vendor.tar.xz) and commit together.";

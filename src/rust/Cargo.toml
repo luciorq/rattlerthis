@@ -18,21 +18,36 @@ extendr-api = '0.9'
 tokio = { version = '1', default-features = false, features = ['rt-multi-thread'] }
 thiserror = '2'
 
-rattler = { version = '0.47', default-features = false, features = ['rustls'] }
+# TLS: `native-tls` instead of `rustls` deliberately -- it links the
+# platform's own TLS (Secure Transport on macOS, SChannel on Windows, system
+# OpenSSL via `openssl-sys` on Linux) instead of vendoring a pure-Rust crypto
+# stack (`rustls` + `aws-lc-rs`/`ring`). On macOS/Windows this needs zero
+# vendored crypto code at all; on Linux it dynamically links `libssl`, which
+# is already a de facto requirement for the R ecosystem (the `curl` and
+# `openssl` CRAN packages need it too) and is present on CRAN's build
+# machines. See PLAN.md "Vendoring and CRAN size" / TODO.md.
+rattler = { version = '0.47', default-features = false, features = ['native-tls'] }
 rattler_conda_types = { version = '0.48' }
 rattler_digest = { version = '1', default-features = false }
 rattler_solve = { version = '7', default-features = false, features = ['resolvo'] }
-rattler_repodata_gateway = { version = '0.30', default-features = false, features = ['gateway', 'rustls'] }
+rattler_repodata_gateway = { version = '0.30', default-features = false, features = ['gateway', 'native-tls'] }
 rattler_shell = { version = '0.27' }
 rattler_virtual_packages = { version = '3' }
-rattler_cache = { version = '0.10', default-features = false, features = ['rustls'] }
+rattler_cache = { version = '0.10', default-features = false, features = ['native-tls'] }
 url = '2'
 
 # Wheel installation (the `conda-pypi` channel serves raw `.whl` files that
 # rattler's own Installer/PackageCache do not yet know how to fetch or link;
-# see PLAN.md "Wheel packages").
-reqwest = { version = '0.13', default-features = false, features = ['rustls'] }
-zip = { version = '8', default-features = false, features = ['deflate'] }
+# see PLAN.md "Wheel packages"). Gated behind the `wheels` feature, off by
+# default: it is not part of the minimal solve/install/activate/run surface
+# and its `reqwest` + `zip` stack is the largest addressable chunk of the
+# vendored dependency tree after TLS. See PLAN.md "Vendoring and CRAN size".
+reqwest = { version = '0.13', default-features = false, features = ['native-tls'], optional = true }
+zip = { version = '8', default-features = false, features = ['deflate'], optional = true }
+
+[features]
+default = []
+wheels = ['dep:reqwest', 'dep:zip']
 
 [dev-dependencies]
 tempfile = '3'
