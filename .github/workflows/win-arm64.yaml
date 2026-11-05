@@ -135,7 +135,10 @@ jobs:
             echo "rattlerthis.dll not found under check/" >&2
             exit 1
           fi
-          objdump="$(cygpath -u "${RTOOLS45_AARCH64_HOME}")/aarch64-w64-mingw32.static.posix/bin/llvm-objdump.exe"
+          # `cygpath -m` (C:/rtools45-aarch64), not `-u`: this bash is the
+          # one of rtools45-aarch64, so `-u` gives its root, `/`, and the path
+          # would start with `//`, a network share.
+          objdump="$(cygpath -m "${RTOOLS45_AARCH64_HOME}")/aarch64-w64-mingw32.static.posix/bin/llvm-objdump.exe"
           "${objdump}" -f "${dll}"
           "${objdump}" -p "${dll}" | grep 'DLL Name' | sort -u | tee imports.txt
           "${objdump}" -f "${dll}" | grep -q 'coff-arm64'
