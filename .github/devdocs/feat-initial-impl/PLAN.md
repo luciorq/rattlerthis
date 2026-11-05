@@ -208,6 +208,37 @@ still extendr's HEAD as of the 2026-08-28 re-check). Both are pinned to
 exact revisions rather than branches, so the build is reproducible and the
 vendored tree corresponds to one known commit.
 
+Re-checked 2026-11-05, against the git histories of both projects:
+
+- **The installed rextendr does not need to be the development version.**
+  Nothing in `R/`, the tests, `tools/`, the `justfile` or the CI
+  workflows calls rextendr: the templates are copied in, and the wrappers
+  come from extendr's C entry point (`document.c`, below). The two upstream
+  changes this package uses (#532 "Updates for Windows ARM64", merged
+  2026-08-04, and #541 "crate compiles twice", 2026-08-21) are in these
+  copied files. Neither is in rextendr 0.5.0 (2026-04-16), the CRAN
+  release, so a re-sync from upstream still has to come from `main`.
+  `Config/Needs/dev` therefore names the CRAN `rextendr` (it was
+  `extendr/rextendr`): the one function still planned,
+  `write_license_note()` (see "Checksum tooling"), is in 0.5.0.
+- **`Config/rextendr/version` was 0.5.0.9000, a version that does not
+  exist.** rextendr's `main` also reports `Version: 0.5.0` (it was not
+  bumped to a development version after the release), so every rextendr
+  function that runs `rextendr_setup()`, such as `use_extendr()`, warned
+  "Installed rextendr is older than the version used with this package".
+  It is now 0.5.0.
+- **The `extendr-api` git pin is still required.** The C entry point
+  `write__make_<module>_wrappers` was added to `extendr-macros` by extendr
+  #1101 ("new document-c method", `f0340f8`, 2026-06-29), after
+  `extendr-api` 0.9.0 (2026-04-16, the newest release on crates.io; 0.8.2 of
+  2026-07-31 is a backport release without it). The pinned `74afddc`
+  (2026-07-10) is in no release. extendr's `main` is 29 commits ahead of
+  it; none is about Windows or WebAssembly, and one fixes `extendr-ffi`
+  when R is not found (#1108, 2026-10-13). Move the pin to the first
+  extendr release that contains #1101, then to crates.io.
+- `Description:` said the bindings use 'rextendr'; they use 'extendr' (the
+  Rust crates). rextendr is the R tooling, which the package does not use.
+
 The `ed3fa0a` re-sync brought exactly one change, rextendr #541 ("crate
 compiles twice"): the document step is now additionally gated on
 `$ROXYGEN_PKG`, which roxygen2 sets only while documenting. Without it,
@@ -601,6 +632,103 @@ would close it; IDs R-1 to R-42) belongs to the backend spec, which is not
 in the repository. Keep all three in step when a difference is closed or
 found: a parity test asserts each difference that can be observed on the
 test machines.
+
+## r-universe and WebAssembly
+
+Researched 2026-11-05, from r-universe's own build workflow and actions
+(`r-universe-org/workflows` `build.yml`, `r-universe-org/actions`
+`build-matrix` and `windows-prep` at `v12`), the docs at
+docs.r-universe.dev, and the pull requests Jeroen Ooms opened in 2026.
+
+### What r-universe builds
+
+- From git, the default branch unless `packages.json` sets `branch` (a
+  branch, a tag, or `"*release"`). It checks the repositories and the
+  registry for changes every hour, and rebuilds every package every 30
+  days. Builds have network access, so a missing `vendor.tar.xz` only
+  means that cargo downloads the crates.
+- For a package with compiled code: Linux and macOS, x86_64 and arm64;
+  Windows x64 for R devel, release and oldrel, and Windows on ARM64
+  (`windows-11-arm` runners) for devel and release; WebAssembly for R
+  release, always. There is no opt-in or opt-out per platform. Build
+  customisation is "overall not possible" (docs, 13.2).
+- For Rust on Windows ARM64, `windows-prep` runs `rustup target add
+  aarch64-pc-windows-gnullvm` and sets
+  `CARGO_BUILD_TARGET=aarch64-pc-windows-gnullvm`, the target that
+  `tools/config.R` picks there. On Windows x64 it installs no Rust target,
+  so the build uses the runner's Rust as it is (see "CI" for the
+  `zstd-sys` risk with the MSVC host). For WebAssembly, `rwasm` puts a
+  `cargo` shim first on `PATH` (r-wasm/rwasm #60, #63) that cross-compiles
+  every `cargo build` to `wasm32-unknown-emscripten`, with `-fPIC` for
+  embedded C code.
+- Checked on ten Rust packages (see "How other Rust packages handle the
+  vendor tarball"): all build on Windows x64 and Windows on ARM64.
+
+### The Windows on ARM64 pull requests
+
+From July to October 2026, Jeroen Ooms opened about 50 pull requests
+titled "Fix build on Windows ARM64" (two waves: 2026-08-01 and
+2026-10-11), to Rust packages (`b64`, `h3o`, `heck`, `zoomerjoin`,
+`tinyimg`, `prqlr`, `automerge`, `ggsql`, `salso`, `clarabel`, ...) and to
+C/C++ ones. Around them: rextendr #532 (the template), the
+`aarch64-pc-windows-gnullvm` target on GitHub's runner images
+(actions/runner-images #14488), and the `windows.binary.arm64` package
+type in pak and r-lib/actions. The Rust ones change the same three things:
+
+1. The Windows target triple is chosen from the R that builds (rextendr's
+   `.windows_target`, or a `tools/rustarch.R` outside the template):
+   `aarch64-pc-windows-gnullvm` on ARM64. `tools/config.R` here has the
+   same code.
+2. `extendr-api` 0.8.1 to 0.8.2 (`b64`, 2026-10-11), for the packages on
+   crates.io's extendr. Not needed here: the git pin is newer.
+3. A `windows-11-arm` job in CI. Here it is `.github/workflows/win-arm64.yaml`,
+   which passed on 2026-11-05 (run 41961267989).
+
+### WebAssembly: the package installs without the backend
+
+WebAssembly is the one r-universe platform this package cannot support,
+for two reasons:
+
+- **rattler does not compile for it.** `cargo check --release --target
+  wasm32-unknown-emscripten` (2026-11-05) stops in `mio`, under tokio:
+  "This wasm target is unsupported by mio. If using Tokio, disable the net
+  feature." rattler's HTTP stack (`reqwest`, `hyper`) needs tokio's `net`.
+  `native-tls` (OpenSSL) and the process and signal crates would come next.
+- **It could not run.** webR cannot start processes, so condathis cannot
+  run a command in an environment with any backend.
+
+Jeroen's wasm fixes (gifski #380, readxl #792) make the code compile, by
+gating what the emscripten target lacks. That is not possible here, so the
+package installs without its Rust library instead of failing to build:
+
+- At the top of `tools/config.R`, before every other check, an R whose
+  platform is `wasm32-unknown-emscripten` writes a `src/Makevars` with
+  `OBJECTS = wasm/init.o`. That compiles only `src/wasm/init.c`, which
+  registers no routines. No Rust toolchain is needed or checked. (R
+  compiles only the files at the top of `src/`, so other builds never
+  compile `src/wasm/init.c`.)
+- `.onLoad()` still registers the "rattler" backend, as condathis requires
+  of a backend package it knows: `new_backend_rattler()` returns
+  `new_backend_rattler_unsupported()` when `rattler_rust_available()` is
+  `FALSE`. That checks the Rust routine (`wrap__rt_job_poll`), not the
+  platform, so any build without Rust gets it, and a test can build one on
+  Linux.
+- That backend's `backend_available()` is `FALSE`, so `method = "auto"`
+  never picks it, even first in `condathis.backend_priority`. Its three
+  required functions keep the arguments of the real ones (which
+  `register_backend()` checks) and abort with `rattlerthis_rust_unavailable`
+  and `condathis_backend_unsupported`. `method = "rattler"` therefore fails
+  with condathis's error (`condathis_create_env_failed`, also
+  `condathis_backend_unsupported`), whose parent says the build has no Rust
+  library and names the platform.
+- `tests/testthat/test-rust-unavailable.R` tests the backend object, the
+  errors and the fallback of `"auto"`, and runs `tools/config.R` in a new R
+  process that reports the webR platform, with no cargo on `PATH`. The
+  whole path was also checked on Linux (2026-11-05): with that
+  `src/Makevars`, `R CMD INSTALL --no-configure` takes 2 seconds, and
+  condathis loads the package and behaves as above.
+- Not checked yet: a real webR build. r-universe will show it once the
+  package is registered (see TODO.md).
 
 ## CI
 

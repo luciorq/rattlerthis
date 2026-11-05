@@ -94,8 +94,22 @@ whether the gateway still emits duplicate records (below).
       regenerated with each released tarball.
 - [ ] Register `rattlerthis` in `luciorq.r-universe.dev` (`packages.json`)
       for binaries on every platform, including Windows on ARM64. Watch the
-      first Windows x64 build: with the MSVC host, `zstd-sys` needs a C
-      compiler that Rtools45 does not have (see README).
+      first builds (PLAN.md "r-universe and WebAssembly"): Windows x64,
+      where r-universe sets no Rust target and, with the MSVC host,
+      `zstd-sys` needs a C compiler that Rtools45 does not have; and
+      WebAssembly, the first real run of the build without Rust.
+- [x] WebAssembly fails gracefully (2026-11-05): `tools/config.R` builds
+      only `src/wasm/init.c` on webR, and the package registers a backend
+      that is never available and aborts with `rattlerthis_rust_unavailable`
+      (`test-rust-unavailable.R`). rattler does not compile for
+      `wasm32-unknown-emscripten` (`mio`, through tokio's `net`).
+- [ ] Move the `extendr-api` git pin (`74afddc`) to the first extendr
+      release that contains #1101 (the `write__make_<module>_wrappers` C
+      entry point), and then to crates.io. Not in 0.9.0 or 0.8.2
+      (re-checked 2026-11-05).
+- [x] rextendr is a development tool only (2026-11-05): `Config/Needs/dev`
+      names the CRAN `rextendr`, and `Config/rextendr/version` is 0.5.0
+      (0.5.0.9000 does not exist, and made rextendr warn).
 - [ ] `cargo tree --duplicates` (or `cargo-deny`) as a CI step, so
       re-vendoring does not regrow version drift.
 - [ ] No CI step detects a stale `vendor.tar.xz` after a
