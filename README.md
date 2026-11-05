@@ -106,4 +106,8 @@ and that test step on Linux, macOS, Windows x64 and Windows on ARM64.
 
 The vendored Rust crates, `src/rust/vendor.tar.xz` (written by
 `just update-vendor`), are not in git. A build without them downloads
-the crates from crates.io, as CI does; with them, the build is offline.
+the crates from crates.io, as CI and r-universe do; with them, the build
+is offline. The tarball is made only before a CRAN submission and for
+major releases, and each one is to be archived on Zenodo. `PLAN.md`
+("Releasing the vendored tarball") has the policy and the checksum
+tooling it still needs.

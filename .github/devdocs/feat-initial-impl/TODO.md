@@ -60,18 +60,42 @@ whether the gateway still emits duplicate records (below).
 
 ## Open
 
-- [ ] First run of `.github/workflows/win-arm64.yaml` on `windows-11-arm`:
-      the ARM64 DLL has only been cross-built and linked so far, never
-      loaded or tested natively.
-- [ ] First run of `.github/workflows/R-CMD-check.yaml`. Both need the
-      condathis ref of `Remotes` pushed (pin a SHA once it is).
+- [ ] `.github/workflows/win-arm64.yaml` on `windows-11-arm`: the first
+      run (2026-11-05, run 41948564276) built, loaded and tested the ARM64
+      DLL natively, with 11 test failures and a failed DLL check step. The
+      fixes (python 3.14 where conda-forge has no 3.12 for win-arm64, the
+      quoted platform in the emulation message, `cygpath -m` for
+      `llvm-objdump`) are in PR #2; check them with a passing run. One
+      failure may remain: after a failing pip step, one backend left its
+      environment directory (only seen under x64 emulation).
+- [x] First run of `.github/workflows/R-CMD-check.yaml`: passed on Linux,
+      macOS and Windows x64 (2026-11-05, run 41948564235). `Remotes` names
+      condathis's `main` branch; pin a SHA if `main` breaks it.
 - [ ] `R CMD check --as-cran` with tests. A local run on Linux
       (2026-10-28, release build, `--no-tests`) had no error; its WARNING
       (no `checkbashisms` script) and NOTEs (no network time, the
       conda-forge toolchain's `-march=nocona`) came from that machine.
-- [ ] `cran-comments.md`: justify the vendored tarball (31.8MB now, see
-      PLAN.md "Vendoring and CRAN size"); if refused, the policy's hosted
-      bundle with an embedded sha256 (not GitHub), then r-universe.
+- [ ] `cran-comments.md`: justify the vendored tarball (35.0MB on
+      2026-11-05, about 3x the largest accepted Rust package, `tok` at
+      11.6MB; see PLAN.md "Vendoring and CRAN size"). If refused, download
+      it from Zenodo with an embedded sha256 (PLAN.md "Releasing the
+      vendored tarball").
+- [ ] Vendored-tarball release tooling, before the first CRAN submission
+      (PLAN.md "Checksum tooling"): record sha256, size, crate count and
+      the `Cargo.lock` sha256 of each released tarball in a committed
+      file; a `just verify-vendor` recipe that checks the Zenodo copy;
+      a verified Zenodo download in `tools/config.R` when the tarball is
+      missing; ideally a reproducible archive (fixed `tar` metadata and
+      `xz` threads).
+- [ ] A Zenodo record for `vendor.tar.xz`, with one version per released
+      tarball (each CRAN submission or update, and each major release).
+- [ ] `LICENSE.note` for the authorship and copyright of the vendored
+      crates, as CRAN's Rust policy requires: `rextendr::write_license_note()`,
+      regenerated with each released tarball.
+- [ ] Register `rattlerthis` in `luciorq.r-universe.dev` (`packages.json`)
+      for binaries on every platform, including Windows on ARM64. Watch the
+      first Windows x64 build: with the MSVC host, `zstd-sys` needs a C
+      compiler that Rtools45 does not have (see README).
 - [ ] `cargo tree --duplicates` (or `cargo-deny`) as a CI step, so
       re-vendoring does not regrow version drift.
 - [ ] No CI step detects a stale `vendor.tar.xz` after a
