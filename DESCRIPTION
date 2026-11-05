@@ -28,7 +28,7 @@ Suggests:
     testthat (>= 3.0.0),
     withr
 Remotes:
-    luciorq/condathis@feat-strict-defaults
+    luciorq/condathis
 Config/condathis/backend: rattler
 Config/Needs/dev: devtools, pkgload, remotes, rcmdcheck, covr, testthat,
     usethis, pak, knitr, quarto, pkgdown, roxygen2, roxygen2md, lintr,
