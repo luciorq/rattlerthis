@@ -1,0 +1,10 @@
+
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e6: an explicit file, with conda's header lines, a leading and a trailing
+# blank line, an md5 and a sha256 fragment. No solve; command-line channels
+# are ignored: foo 1.0 (chA) and baz 1.0 (chC).
+# platform: linux-64
+@EXPLICIT
+@CHANNEL_DIR@/chA/noarch/foo-1.0-0.tar.bz2#@MD5:chA/noarch/foo-1.0-0.tar.bz2@
+@CHANNEL_DIR@/chC/noarch/baz-1.0-0.tar.bz2#sha256:@SHA256:chC/noarch/baz-1.0-0.tar.bz2@
+

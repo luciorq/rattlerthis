@@ -1,0 +1,22 @@
+{
+ "info": {
+  "subdir": "win-64"
+ },
+ "packages": {
+  "intelonly-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "08c1726dbb86141fc5094b642b713055",
+   "name": "intelonly",
+   "sha256": "598ea0129f67602f6888fb0dc46c46d1cdcec4dc90031ebe2757990f67b55078",
+   "size": 441,
+   "subdir": "win-64",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}

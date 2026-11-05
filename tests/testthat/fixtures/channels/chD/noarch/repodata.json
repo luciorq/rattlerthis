@@ -1,0 +1,23 @@
+{
+ "info": {
+  "subdir": "noarch"
+ },
+ "packages": {
+  "devtool-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "863a2f636c3c7909dbeef2115c2028cc",
+   "name": "devtool",
+   "noarch": "generic",
+   "sha256": "c47515be7fae372e6de9e274cc5beff2151a0eed3af0e4235542d841e3ebfc9c",
+   "size": 441,
+   "subdir": "noarch",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}

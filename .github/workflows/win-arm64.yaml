@@ -1,0 +1,145 @@
+# Native Windows on ARM64 build and check of rattlerthis.
+#
+# + `setup-r` detects the arm64 runner and installs the native aarch64 R
+#   build plus rtools45-aarch64 (LLVM 19, lld, MinGW-w64) on PATH.
+# + `tools/config.R` picks the `aarch64-pc-windows-gnullvm` Rust target from
+#   `R.version$platform`, so the only Rust setup needed is that target.
+#   Build scripts are compiled for the rustup host (MSVC on the runner
+#   image, linked with its Visual Studio).
+# + On a private repository this runner has 2 vCPUs and uses the account's
+#   included Actions minutes.
+# + Needs the Windows build files from the working tree (`@WINDOWS_TARGET@`
+#   in `src/Makevars.win.in`, filled by `tools/config.R`): the older
+#   `$(WIN)`-derived target expands to `-pc-windows-gnu` on aarch64 R.
+# + R packages: CRAN has no Windows ARM64 binaries, and the public RSPM is
+#   off on this runner. cran.r-universe.dev has aarch64 binaries for R 4.6
+#   of every dependency (none for R 4.5), in bin/windows/clang-aarch64/,
+#   the binary type of the aarch64 R build. Without it, pak builds every
+#   compiled dependency (stringi, cli, fs, jsonlite, processx, ps, rlang,
+#   testthat, ...) from source.
+# + Tests: as in R-CMD-check.yaml, `R CMD check` runs with `--no-tests` and
+#   the next step runs the suite once against the installed package, with
+#   micromamba 2.10.0 (win-arm64 build) as CONDATHIS_MICROMAMBA_PATH. It
+#   fails unless there is no failure, no error and exactly 2 skips (the 2
+#   wheel tests). The network tests use conda-forge packages that exist for
+#   win-arm64 (xz, zstd, ripgrep) or noarch (pip, with python 3.14/3.15).
+# + condathis comes from the `Remotes` field of DESCRIPTION, which must be
+#   pushed first.
+---
+on:
+  push:
+    branches: [main]
+
+  workflow_dispatch:
+
+name: win-arm64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  win-arm64:
+    runs-on: windows-11-arm
+    timeout-minutes: 120
+
+    name: windows-11-arm (release)
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: true
+      MICROMAMBA_VERSION: 2.10.0-0
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          extra-repositories: https://cran.r-universe.dev
+
+      # Fail early if setup-r ever falls back to x64 R under emulation, which
+      # would build for x86_64-pc-windows-gnu and test nothing ARM-specific.
+      - name: Check that R is the native aarch64 build
+        shell: Rscript {0}
+        run: |
+          cat("platform:", R.version$platform, "\n")
+          cat("machine: ", Sys.info()[["machine"]], "\n")
+          cat("RTOOLS45_AARCH64_HOME:", Sys.getenv("RTOOLS45_AARCH64_HOME"), "\n")
+          cat("pkgType: ", .Platform$pkgType, "\n")
+          print(getOption("repos"))
+          stopifnot(grepl("aarch64", R.version$platform))
+
+      # rustup ships with the runner image; install it only if a future
+      # image drops it. The aarch64-pc-windows-gnullvm target is what
+      # rtools45-aarch64 links against.
+      - name: Set up Rust with the aarch64-pc-windows-gnullvm target
+        shell: pwsh
+        run: |
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $init = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+            Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe" -OutFile $init
+            & $init -y --no-modify-path --profile minimal --default-toolchain stable
+            $cargo_bin = Join-Path $env:USERPROFILE ".cargo\bin"
+            Add-Content -Path $env:GITHUB_PATH -Value $cargo_bin
+            $env:PATH = "$cargo_bin;$env:PATH"
+          }
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add aarch64-pc-windows-gnullvm
+          rustup show
+          rustc -vV
+          cargo --version
+
+      # The win-arm64 build of micromamba, as condathis installs it on this
+      # machine (see R-CMD-check.yaml).
+      - name: Set up micromamba for the parity tests
+        shell: bash
+        run: bash .github/scripts/install-micromamba.sh "${MICROMAMBA_VERSION}"
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      # No `--as-cran` and fail only on errors for now: the point of this job
+      # is that the crate builds, links and passes its tests on ARM64. The
+      # tests run in the next step, once.
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-results: true
+          args: 'c("--no-manual", "--no-tests")'
+          build_args: 'c("--no-manual")'
+          error-on: '"error"'
+
+      - name: Test (0 failures, 0 errors, exactly 2 skips)
+        shell: bash
+        run: Rscript .github/scripts/run-tests.R check 2
+
+      # The DLL must be ARM64 and import only Windows system DLLs and R.dll.
+      # A toolchain runtime DLL here (libunwind.dll, libc++.dll,
+      # libwinpthread-1.dll, ...) loads on this runner, where rtools is on
+      # PATH, but not on a user's machine. rtools45-aarch64 ships libunwind
+      # only as a static archive; llvm-mingw also ships libunwind.dll.a, and
+      # `-lunwind` from Rust's native-static-libs picks that one when present.
+      - name: Check the installed DLL
+        if: always()
+        shell: bash
+        run: |
+          dll="$(find check -path '*rattlerthis/libs*' -name 'rattlerthis.dll' | head -n 1)"
+          if [ -z "${dll}" ]; then
+            echo "rattlerthis.dll not found under check/" >&2
+            exit 1
+          fi
+          objdump="$(cygpath -u "${RTOOLS45_AARCH64_HOME}")/aarch64-w64-mingw32.static.posix/bin/llvm-objdump.exe"
+          "${objdump}" -f "${dll}"
+          "${objdump}" -p "${dll}" | grep 'DLL Name' | sort -u | tee imports.txt
+          "${objdump}" -f "${dll}" | grep -q 'coff-arm64'
+          if grep -i -E 'DLL Name: (lib[^ ]*|.*mingw[^ ]*)\.dll' imports.txt; then
+            echo "rattlerthis.dll imports a toolchain runtime DLL" >&2
+            exit 1
+          fi

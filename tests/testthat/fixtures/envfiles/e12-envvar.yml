@@ -1,0 +1,8 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e12: `${VAR}` and `$VAR` in channels are expanded from the environment
+# (micromamba's expandvars); run with ENVFILE_CHANNEL_DIR set to the value of
+# @CHANNEL_DIR@: baz 1.0 from chC.
+channels:
+  - ${ENVFILE_CHANNEL_DIR}/chC
+dependencies:
+  - baz

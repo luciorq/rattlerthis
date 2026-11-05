@@ -1,0 +1,7 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e2: `nodefaults` is accepted and dropped; with `-c chA`, foo 1.0 from chA.
+channels:
+  - @CHANNEL_DIR@/chB
+  - nodefaults
+dependencies:
+  - foo

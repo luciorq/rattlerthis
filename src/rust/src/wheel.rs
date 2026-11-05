@@ -3,8 +3,8 @@
 //! `.conda`/`.tar.bz2` archive.
 //!
 //! `rattler::install::Installer` and `rattler_cache::package_cache` don't
-//! know how to fetch or link these yet — they only understand conda's own
-//! archive formats — even though `rattler_conda_types` already models
+//! know how to fetch or link these yet -- they only understand conda's own
+//! archive formats -- even though `rattler_conda_types` already models
 //! `DistArchiveType::Wheel` at the type level and the solver resolves wheel
 //! records without complaint. This module fills that gap: download the
 //! wheel (a plain zip file), place its contents under the environment's

@@ -1,6 +1,32 @@
 # Note: Any variables prefixed with `.` are used for text
 # replacement in the Makevars.in and Makevars.win.in
 
+# On Linux, TLS is provided by `native-tls` linking system OpenSSL via
+# `openssl-sys`, which needs `pkg-config` and OpenSSL's *development*
+# headers (not just the runtime shared library) at build time -- see
+# PLAN.md "Vendoring and CRAN size" for why `native-tls` instead of
+# `rustls`. macOS/Windows use their own native TLS (Secure Transport /
+# SChannel) and need nothing extra here. Checked before anything else so a
+# missing system dependency fails fast with an actionable message instead
+# of surfacing as a wall of `cargo`/`openssl-sys` build-script output deep
+# in the Rust compile log.
+if (Sys.info()[["sysname"]] == "Linux") {
+  pkg_config_found <- nzchar(Sys.which("pkg-config"))
+  openssl_found <- pkg_config_found &&
+    system2("pkg-config", c("--exists", "openssl"), stdout = FALSE, stderr = FALSE) == 0L
+  if (!openssl_found) {
+    stop(
+      "rattlerthis needs `pkg-config` and OpenSSL development headers to ",
+      "build on Linux (used for TLS via `native-tls`). Install them, e.g.:\n",
+      "  Debian/Ubuntu: sudo apt-get install -y pkg-config libssl-dev\n",
+      "  Fedora/RHEL:   sudo dnf install -y pkg-config openssl-devel\n",
+      "  Alpine:        sudo apk add pkgconfig openssl-dev\n",
+      "then retry. See DESCRIPTION's SystemRequirements.",
+      call. = FALSE
+    )
+  }
+}
+
 # check the packages MSRV first
 source("tools/msrv.R")
 
@@ -36,6 +62,22 @@ if (!is_not_cran) {
 # when DEBUG env var is present we use `--debug` build
 .profile <- ifelse(is_debug, "", "--release")
 .clean_targets <- ifelse(is_debug, "", "$(TARGET_DIR)")
+
+# Whether to regenerate `R/extendr-wrappers.R` during the build.
+#
+# The generated file is committed to the repo, so regenerating it during
+# `R CMD INSTALL` is redundant for an end-user install and actively harmful
+# on CRAN: it writes *into the package source tree*, which CRAN discourages
+# and which fails outright when the source is unpacked read-only. It also
+# costs an extra compile+link of `rust/document.c` for no benefit.
+#
+# So: regenerate only for development builds (NOT_CRAN/DEBUG, which is what
+# `devtools::load_all()` and `just document` set), and on CRAN just use the
+# committed wrappers. Keeping the committed file in sync is a dev-time
+# responsibility -- `just document` regenerates it, and any change to an
+# `#[extendr]` signature that isn't re-documented shows up as a mismatch
+# between `R/extendr-wrappers.R` and the compiled symbols.
+.document_flag <- ifelse(is_not_cran, "1", "")
 
 # We specify this target when building for webR
 webr_target <- "wasm32-unknown-emscripten"
@@ -73,6 +115,28 @@ cfg <- if (is_debug) "debug" else "release"
 # read in the Makevars.in file checking
 is_windows <- .Platform[["OS.type"]] == "windows"
 
+# Rust target triple to build for on Windows. Picked from what R itself was
+# built as/with rather than hardcoded, because Rtools' toolchain differs
+# across R versions and architectures:
+#   - Windows on ARM64 (R 4.6+) needs `aarch64-pc-windows-gnullvm`
+#   - Rtools built with clang (UCRT/LLVM) needs `x86_64-pc-windows-gnullvm`;
+#     matching the CRT matters, a gnu/gnullvm mismatch shows up as duplicate
+#     symbols or runtime crashes rather than a clean link error
+#   - 32-bit R (pre-4.2) needs `i686-pc-windows-gnu`
+#   - everything else is the classic `x86_64-pc-windows-gnu`
+# These four triples are also what `just update-vendor` filters the vendored
+# crate tree to, so keep the two lists in sync. Mirrors the upstream rextendr
+# dev template.
+.windows_target <- if (grepl("aarch", R.version$platform)) {
+  "aarch64-pc-windows-gnullvm"
+} else if (grepl("clang", Sys.getenv("R_COMPILED_BY"))) {
+  "x86_64-pc-windows-gnullvm"
+} else if (grepl("i386", R.version$platform)) {
+  "i686-pc-windows-gnu"
+} else {
+  "x86_64-pc-windows-gnu"
+}
+
 # if windows we replace in the Makevars.win.in
 mv_fp <- ifelse(
   is_windows,
@@ -99,6 +163,8 @@ mv_txt <- readLines(mv_fp)
 # replace placeholder values
 new_txt <- gsub("@CRAN_FLAGS@", .cran_flags, mv_txt) |>
   gsub("@PROFILE@", .profile, x = _) |>
+  gsub("@DOCUMENT_FLAG@", .document_flag, x = _) |>
+  gsub("@WINDOWS_TARGET@", .windows_target, x = _) |>
   gsub("@CLEAN_TARGET@", .clean_targets, x = _) |>
   gsub("@LIBDIR@", .libdir, x = _) |>
   gsub("@TARGET@", .target, x = _) |>

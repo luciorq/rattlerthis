@@ -5,18 +5,196 @@
 #' @useDynLib rattlerthis, .registration = TRUE
 NULL
 
-#' Solve `specs` against `channels` and link the result into `prefix`,
-#' preserving whatever is already installed there. Used by both
-#' `create_env()` and `install()` on the R side.
+#' Poll a job.
+#'
+#' `NULL` while the job runs; its result once it is done; an R error with
+#' the message `"[rattlerthis:<kind>] <text>"` when it failed (kind
+#' `cancelled` after a cancel). A done job keeps its result, so polling it
+#' again returns the same value.
 #'
 #' @noRd
-rt_install <- function(specs, prefix, channels, channel_priority, platform, repodata_cache_dir, pkgs_cache_dir) .Call(wrap__rt_install, specs, prefix, channels, channel_priority, platform, repodata_cache_dir, pkgs_cache_dir)
+rt_job_poll <- function(job) .Call(wrap__rt_job_poll, job)
 
-#' Compute the environment variables that activating `prefix` would change,
-#' as a named list of strings. Does not spawn the target CLI tool; `run()`
-#' on the R side merges this into a `processx::run()` call.
+#' Request that a job stops, and return at once.
+#'
+#' `TRUE` when the job stops (or stopped) without completing: before its
+#' link phase, or a solve check, activation, cache clean or sleep (such a
+#' job then always ends with kind `cancelled`, also when its work had just
+#' finished). `FALSE` when it is linking and will complete, or already
+#' completed. Keep polling until the job is done either way.
 #'
 #' @noRd
-rt_activation_env <- function(prefix, platform) .Call(wrap__rt_activation_env, prefix, platform)
+rt_job_cancel <- function(job) .Call(wrap__rt_job_cancel, job)
+
+#' The current phase of a job: `"lock"` (waiting for the prefix lock),
+#' `"fetch"`, `"solve"`, `"prefetch"`, `"link"`, `"activate"`, `"clean"`,
+#' `"sleep"` or `"done"`.
+#'
+#' @noRd
+rt_job_phase <- function(job) .Call(wrap__rt_job_phase, job)
+
+#' Number of jobs of this process that are not done yet.
+#'
+#' @noRd
+rt_live_jobs <- function() .Call(wrap__rt_live_jobs)
+
+#' Start a job that solves `specs` against `channels` and links the result
+#' into `prefix`, keeping what is installed there (create and install).
+#' Installed packages that block the request are removed, as micromamba
+#' does. `prefix` is resolved as micromamba resolves it (symbolic links,
+#' and backslashes on Windows). Each spec is cleaned as micromamba's parser
+#' cleans it (a byte order mark, a ` #` comment and a package URL's non-hex
+#' fragment go); a package URL with a hex fragment does not solve (kind
+#' `solve`), as with micromamba. A package installed from a URL gets the
+#' URL's channel and the archive's hashes and size in its record.
+#'
+#' Result: `list(prefix, records = data.frame(op, name, version, build,
+#' channel, subdir), channels, link_scripts_skipped = data.frame(package,
+#' script))`; `prefix` is the resolved path.
+#'
+#' Downloads honor what micromamba honors when condathis runs it: the
+#' proxy variables libcurl reads (`http_proxy`, `https_proxy`,
+#' `all_proxy`, `no_proxy`, the last three also upper-case), the CA bundle
+#' libmamba chooses (`<net_root>/ssl/cert.pem`, `Library/ssl/cacert.pem` on
+#' Windows, when it exists; else the first of libmamba's system bundles,
+#' the system store on Windows), and the credentials of
+#' `~/.mamba/auth/authentication.json`, `.netrc` and the channel URLs.
+#' `net_root` is condathis's root (micromamba's root prefix), or `NULL`.
+#'
+#' @noRd
+rt_install <- function(specs, prefix, channels, channel_priority, platform, repodata_cache_dir, pkgs_cache_dir, net_root = NULL) .Call(wrap__rt_install, specs, prefix, channels, channel_priority, platform, repodata_cache_dir, pkgs_cache_dir, net_root)
+
+#' Start a job that links the packages at `urls` into `prefix` without a
+#' solve (explicit files and lock files). Each URL (or local path) may end
+#' in `#<md5>`, `#<sha256>` or `#sha256:<sha256>`, which the archive is
+#' checked against (kind `hash_mismatch`, also for a hash with upper-case
+#' digits, which micromamba never matches); other fragments are ignored.
+#' A package already installed under the same name is replaced. Wheels, source archives and VCS URLs are
+#' refused (kind `unsupported`), and so is a name given twice (kind
+#' `env_file`). Link scripts are skipped and reported, as by `rt_install()`.
+#' The history gets micromamba's `# update specs` line for an explicit file
+#' (`name==version=build` per URL), and none when `lock_file` is `TRUE` (the
+#' URLs of a conda-lock file), as micromamba writes none for lock files.
+#'
+#' Result: as `rt_install()`'s; `channels` are the packages' channels. The
+#' network settings are those of `rt_install()`.
+#'
+#' @noRd
+rt_install_explicit <- function(urls, prefix, platform, pkgs_cache_dir, lock_file = FALSE, net_root = NULL) .Call(wrap__rt_install_explicit, urls, prefix, platform, pkgs_cache_dir, lock_file, net_root)
+
+#' Read an environment file the way `micromamba create -f` reads it. The
+#' kind comes from the name: `-lock.yml`/`-lock.yaml` a conda-lock file,
+#' `.json` a mambajs lock file, `.yml`/`.yaml` an environment YAML file,
+#' anything else a text file (explicit when a line starts with
+#' `@EXPLICIT`, else one spec per line). `platform` (default: this
+#' library's) selects the packages of a lock file; YAML `sel()` selectors
+#' follow this library's platform, as micromamba's follow its own. Nothing
+#' is downloaded or installed. YAML and lock files may be UTF-8, UTF-16 or
+#' UTF-32, with or without a byte order mark; text files are UTF-8.
+#'
+#' Result: `list(kind = "yaml" | "explicit" | "plain" | "conda_lock" |
+#' "mambajs_lock", name = chr(1) or NA, channels = chr (YAML channels,
+#' environment variables expanded), specs = chr (with `pip` added as
+#' micromamba adds it for a `pip:` section), variables = named chr (sorted
+#' by name, values as written; used by neither backend), file_platform =
+#' chr(1) or NA (an explicit file's `# platform:`), urls = chr (explicit
+#' lines, or a lock file's packages as `url#<hash>`), platforms = chr (a
+#' lock file's platforms), problems = chr, pip = list of `list(manager,
+#' specs, cwd)`)`. `pip` holds the pip steps micromamba runs after the
+#' create, in order: one per YAML `pip:` section (`manager` `"pip"`, or
+#' `"uv"` when the dependencies list `uv`; `specs` as written, possibly
+#' none) and one for a lock file's pip packages (`"pip --no-deps"`, specs
+#' `<name> @ <url>#sha256=<sha256>`); `cwd` is the file's absolute
+#' directory. micromamba writes the specs, one per line, to a file
+#' `mambaf<10 random alphanumerics>` in `cwd` and runs `<env python> -m pip
+#' install [--no-deps] -r <file> --no-input` (`<env uv> pip install -r
+#' <file>` for `"uv"`) in the activated environment, in `cwd`; a non-zero
+#' exit fails the create. Errors: kind `env_file` for a file that cannot be
+#' read or parsed (also a text file with NUL bytes, and any field with a
+#' NUL), `unsupported` for wheels or source archives among the conda
+#' packages of a lock file, `hash_mismatch` for a lock file hash that no
+#' archive can match (micromamba fails such a package after downloading
+#' it).
+#'
+#' @noRd
+rt_read_env_file <- function(path, platform) .Call(wrap__rt_read_env_file, path, platform)
+
+#' Start a job that checks whether `specs` solve for `platform`.
+#'
+#' Result: `TRUE` (solves), `FALSE` (unsolvable, also for a package URL
+#' with a hex fragment), `NA` (cannot tell: a missing channel, no network,
+#' an invalid spec). Nothing is downloaded or linked. The network settings
+#' are those of `rt_install()`.
+#'
+#' @noRd
+rt_solve_check <- function(specs, channels, channel_priority, platform, repodata_cache_dir, pkgs_cache_dir, net_root = NULL) .Call(wrap__rt_solve_check, specs, channels, channel_priority, platform, repodata_cache_dir, pkgs_cache_dir, net_root)
+
+#' Start a job that computes the variables activating `prefix` changes,
+#' starting from the environment given by `env_names` and `env_values` (also
+#' the activation shell's whole environment). `prefix` is resolved as
+#' micromamba resolves it, so `CONDA_PREFIX` and the `PATH` entries name
+#' the same path as micromamba's.
+#'
+#' Result: a named list of strings, `NA` for a variable the activation
+#' unset.
+#'
+#' @noRd
+rt_activation_env <- function(prefix, platform, env_names, env_values) .Call(wrap__rt_activation_env, prefix, platform, env_names, env_values)
+
+#' Start a job that empties rattler's package and repodata caches. A
+#' cancel stops it before the next top-level entry.
+#'
+#' Result: `list(removed = chr, failed = chr, bytes = dbl)`.
+#'
+#' @noRd
+rt_clean_cache <- function(pkgs_cache_dir, repodata_cache_dir) .Call(wrap__rt_clean_cache, pkgs_cache_dir, repodata_cache_dir)
+
+#' Start a job that sleeps for `secs` seconds (a test hook for interrupts
+#' and quiescing). Result: `TRUE`.
+#'
+#' @noRd
+rt_test_job_sleep <- function(secs) .Call(wrap__rt_test_job_sleep, secs)
+
+#' Serve the files below `root` over HTTPS on 127.0.0.1, with the identity
+#' `cert_pem` (PEM) and `key_der` (PKCS#8 DER), until the process ends (a
+#' test hook for the network tests: run it in an R process of its own). The
+#' port is written to `port_file` once the server listens; every request
+#' line and its `Authorization` header are appended to `log_file` (`NULL`:
+#' no log). Answers `GET` and `HEAD`, one request per connection. Returns
+#' only on an error.
+#'
+#' @noRd
+rt_test_https_server <- function(root, cert_pem, key_der, port_file, log_file) .Call(wrap__rt_test_https_server, root, cert_pem, key_der, port_file, log_file)
+
+#' The conda subdir rattlerthis was compiled for (`Platform::current()`).
+#'
+#' @noRd
+rt_native_platform <- function() .Call(wrap__rt_native_platform)
+
+#' The effective channel URLs (without trailing slashes) for `channels` and
+#' the channel-qualified `specs`, as installs use them. No network.
+#'
+#' @noRd
+rt_effective_channels <- function(channels, specs) .Call(wrap__rt_effective_channels, channels, specs)
+
+#' Whether this build was compiled with the optional `wheels` Cargo feature,
+#' i.e. whether it can install wheel-format packages (the `conda-pypi`
+#' channel and similar). Off by default, including for CRAN builds; see
+#' PLAN.md ("Wheel packages"). Exposed so the R test suite can skip
+#' wheel-specific tests on a build that cannot satisfy them, instead of
+#' reporting a configuration choice as a failure.
+#'
+#' @noRd
+rt_has_wheel_support <- function() .Call(wrap__rt_has_wheel_support)
+
+#' `text` with the credentials of the URLs in it hidden, as rattlerthis
+#' hides them in its error messages and libmamba in what it prints: every
+#' `/t/<token>` becomes `/t/*****`, and the password of every
+#' `<scheme>://user:password@` becomes `*****` (`secrets.rs`). condathis
+#' hides them with the same rule. For the request line of the level
+#' `"cmd"`. `NA` stays `NA`.
+#'
+#' @noRd
+rt_hide_secrets <- function(text) .Call(wrap__rt_hide_secrets, text)
 
 # nolint end

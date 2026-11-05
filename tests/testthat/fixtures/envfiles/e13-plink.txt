@@ -1,0 +1,6 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e13: an explicit file with a package that has link scripts: micromamba runs
+# its pre-link and post-link scripts, the rattler backend skips them and
+# reports both.
+@EXPLICIT
+@CHANNEL_DIR@/plink/noarch/plink-1.0-0.tar.bz2#@MD5:plink/noarch/plink-1.0-0.tar.bz2@

@@ -1,0 +1,14 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e4: `variables:` are used by neither backend (condathis runs micromamba
+# with --no-env): no <prefix>/conda-meta/state, and run() does not see them.
+# They are read as written ("1.50", "null" for an empty value) only for the
+# note at verbose = "full".
+channels:
+  - @CHANNEL_DIR@/chA
+dependencies:
+  - foo
+variables:
+  MY_VAR: hello
+  lower_var: x
+  NUM: 1.50
+  EMPTY:

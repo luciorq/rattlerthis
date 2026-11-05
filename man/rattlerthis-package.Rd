@@ -4,17 +4,124 @@
 \name{rattlerthis-package}
 \alias{rattlerthis}
 \alias{rattlerthis-package}
-\title{rattlerthis: Run Any CLI Tool on a 'Conda' Environment Powered by 'rattler'}
+\title{rattlerthis: The 'rattler' Backend for 'condathis'}
 \description{
-Creates and manages 'Conda' environments and runs command line tools inside them, without shelling out to an external package manager binary. Environment solving, package installation, and shell activation are implemented natively via Rust bindings (using 'rextendr') to the 'rattler' library (\url{https://github.com/conda/rattler}), the same engine that powers 'pixi'.
+rattlerthis is the backend \code{"rattler"} of condathis. It creates Conda
+environments, installs packages into them and activates them in the R
+process, through the Rust library 'rattler'
+(\url{https://github.com/conda/rattler}), without a package manager binary.
+It exports no functions and has no options of its own: use condathis's
+functions with \code{method = "rattler"}.
 }
-\seealso{
-Useful links:
+\details{
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{condathis::create_env("ripgrep", env_name = "rg", method = "rattler")
+condathis::run("rg", "--version", env_name = "rg")
+condathis::list_envs(method = "rattler")
+}\if{html}{\out{</div>}}
+
+condathis loads rattlerthis when \code{method = "rattler"} is used, and when
+rattler environments exist, so \code{method = "auto"} finds them. Every
+argument, check, message, result and condition class is condathis's, as
+are \code{\link[condathis:with_sandbox_dir]{condathis::with_sandbox_dir()}} and \code{\link[condathis:clean_cache]{condathis::clean_cache()}}. The
+environments live in \code{condathis::backend_root_dir("rattler")}, the
+directory \code{rattler} inside condathis's data directory, with rattler's own
+package cache (\code{pkgs}) and channel metadata cache (\code{repodata_cache}).
+The generic Conda variables \verb{CONDA_OVERRIDE_*} are honored, as by
+micromamba.
+}
+\section{Differences from the micromamba backend}{
+
+Both backends behave the same wherever possible: \code{\link[condathis:run]{condathis::run()}},
+\code{\link[condathis:run_bin]{condathis::run_bin()}} and \code{\link[condathis:run_pipeline]{condathis::run_pipeline()}} activate the
+environment the same way (also one given by \code{\link[condathis:env_path]{condathis::env_path()}}),
+the activation is cached per environment until the environment or the
+session's variables change, and condathis lets only one R session at a
+time change an environment. What a user may notice:
 \itemize{
-  \item \url{https://github.com/luciorq/rattlerthis}
-  \item Report bugs at \url{https://github.com/luciorq/rattlerthis/issues}
+\item Link scripts: rattler never runs the \code{pre-link}, \code{post-link} or
+\code{pre-unlink} scripts of packages, and condathis warns with class
+\code{condathis_link_scripts_skipped}, naming the packages. micromamba runs
+them (and ignores a script that fails). \code{activate.d} scripts run with
+both backends. rattler does not byte-compile \code{noarch} Python packages
+at install time either.
+\item Output: rattler runs no command, so the level \code{"cmd"} prints a
+one-line description (\verb{Running rattler create ...}), \code{"full"} prints
+one line per package of the transaction, and the spinner is cli's. In
+the results of \code{\link[condathis:create_env]{condathis::create_env()}} and
+\code{\link[condathis:install_packages]{condathis::install_packages()}}, \code{cmd}, \code{stderr} and \code{pid} are \code{NA}
+(\code{stderr} is pip's after pip steps), and \code{stdout} holds the
+transaction lines (\code{""} when nothing changed).
+\item Errors have condathis's classes with both backends. Instead of
+micromamba's status classes, a rattler failure has the parent classes
+\verb{rattlerthis_rattler_<kind>} (such as \code{rattlerthis_rattler_solve}) and
+\code{rattlerthis_rattler_error}. The error texts differ.
+\item pip: the \verb{pip:} sections of a YAML file and the pip packages of lock
+files are installed as micromamba installs them, with the
+environment's pip after the Conda packages, and
+\code{\link[condathis:list_packages]{condathis::list_packages()}} lists them alike. pip's cache on Linux is
+in the \code{cache} directory of each backend's root; on macOS and Windows
+pip keeps it in the user's own cache directory with both.
+\item The environment of a command: micromamba's activation also sets
+\code{MAMBA_EXE} and puts a directory of its own (\code{condabin}) on \code{PATH}. On
+Linux and macOS it sets \code{LC_ALL} to \code{C.UTF-8}, where rattler keeps the
+session's value, and drops single quotes from the values of
+\code{conda-meta/state} and \code{etc/conda/env_vars.d}, which rattler passes as
+written. On Windows it also sets \code{PYTHONUTF8}, \code{PYTHONIOENCODING} and
+\verb{_CONDA_OLD_CHCP}, and puts the environment name in \code{PROMPT}.
+\code{CONDA_ENVS_PATH}, \code{CONDA_PKGS_DIRS} and \code{MAMBA_PKGS_DIRS} name each
+backend's own directories.
+\item An interrupt (Ctrl-C) stops a solve or a download at once, but waits
+for a link that has started to finish.
+\item Files: the package caches are separate, so a package that both
+backends use is downloaded twice; after \code{\link[condathis:clean_cache]{condathis::clean_cache()}},
+rattler's empty \code{pkgs} (with its lock file) and \code{repodata_cache}
+directories stay. Every rattler environment has a \code{CACHEDIR.TAG} file
+(and, on macOS, is excluded from Time Machine backups), and its paths
+are 8 characters longer than micromamba's (the 260-character path
+limit of Windows). On Windows, a file of a running program that cannot
+be deleted when its environment is removed stays in condathis's trash
+and is deleted by a later removal; micromamba leaves it as
+\code{.mamba_trash}.
+\item rattler solves for the platform rattlerthis was built for, which is
+the platform of the micromamba binary condathis installs for that R
+(an x64 R on an ARM64 Windows PC solves for \code{win-64}); micromamba
+solves for the platform of the binary it runs, which differs when
+condathis uses a binary another R installed or one given with
+\code{CONDATHIS_MICROMAMBA_PATH}.
+\item In a forked child process on macOS (\code{parallel::mcparallel()},
+\code{parallel::mclapply()}), creates, installs and downloads fail with an
+error; running commands works. On Linux forks are fully supported, and
+PSOCK workers work everywhere.
+\item Network: both backends honor the same settings, as micromamba has them
+when condathis runs it: the proxy variables \code{http_proxy},
+\code{https_proxy}, \code{all_proxy} and \code{no_proxy} (the last three also in
+capitals), the system's CA certificates (or \code{ssl/cert.pem} in
+condathis's directory) but no CA variable such as \code{SSL_CERT_FILE},
+and the credentials of \verb{~/.mamba/auth/authentication.json}, \code{.netrc}
+and channel URLs. Channel metadata is reused as micromamba reuses it
+(for an hour, or as long as the server allows), but for a channel
+with a platform directory that the server does not have. Network
+errors are retried with other waits and time-outs, and on Windows
+rattler checks certificate revocation only against the system's
+cache, where micromamba asks the network.
+\item Channels: a local channel in a directory with a space works with
+rattler everywhere; micromamba reads it through another path to the
+same directory, which condathis cannot make on a Windows volume
+without short (8.3) names, or on Linux and macOS when condathis's own
+directory has a space.
+\item Environment metadata: a \verb{#} comment line in \code{conda-meta/pinned} is
+skipped by rattler, where micromamba fails every install. rattler
+never adds environments to \verb{~/.conda/environments.txt}; micromamba
+does only when it needs the user's home (saved channel logins,
+\code{.netrc}, or an environment file that runs pip or names the home).
+rattler's \code{conda-meta/history} has no \verb{# cmd:} and \verb{# conda version:}
+lines, and can list the packages of one transaction in another order.
+}
 }
 
+\seealso{
+\code{\link[condathis:create_env]{condathis::create_env()}}, \code{\link[condathis:register_backend]{condathis::register_backend()}},
+\code{\link[condathis:backend_root_dir]{condathis::backend_root_dir()}}
 }
 \author{
 \strong{Maintainer}: Lucio Queiroz \email{luciorqueiroz@gmail.com} [copyright holder]
@@ -25,4 +132,3 @@ Authors:
 }
 
 }
-\keyword{internal}

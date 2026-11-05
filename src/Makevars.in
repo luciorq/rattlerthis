@@ -1,7 +1,37 @@
 TARGET_DIR = ./rust/target
 LIBDIR = $(TARGET_DIR)/@LIBDIR@
 STATLIB = $(LIBDIR)/librattlerthis.a
-PKG_LIBS = -L$(LIBDIR) -lrattlerthis
+DOCUMENT = rust/document
+
+# Populated by the $(STATLIB) recipe below from rustc's own
+# `--print=native-static-libs` output (e.g. `-lssl -lcrypto` on Linux,
+# `-framework Security -framework CoreFoundation` on macOS, now that TLS is
+# `native-tls` rather than `rustls` -- see PLAN.md "Vendoring and CRAN size").
+# `librattlerthis.a` is a plain static archive: Cargo only applies a
+# dependency's `cargo:rustc-link-lib=...` directives automatically when
+# *cargo itself* produces the final binary/cdylib. Here the final link is a
+# separate, manual `cc` invocation (R's own build machinery, driven by
+# PKG_LIBS below), so those directives have to be captured and threaded
+# through by hand or the resulting rattlerthis.so silently keeps unresolved
+# symbols (e.g. `i2d_DSA_SIG` from openssl-sys) that only fail at
+# `dyn.load()` time in R, not at link time (R's own build flags already
+# pass `-Wl,--allow-shlib-undefined`, so a missing `-lssl -lcrypto` doesn't
+# fail the link step at all -- it just produces a `.so` that fails to load).
+# Deliberately generic rather than hardcoding per-OS libs, so macOS
+# frameworks and Windows SChannel libs come through the same path.
+#
+# PKG_LIBS is consumed by R's own $(SHLIB) rule, which is a separate rule
+# that runs *after* $(STATLIB) below has produced $(NATIVE_LIBS), so the
+# `$(shell cat ...)` here is expanded late enough to see the file. The
+# document-generation step inside $(STATLIB)'s own recipe must NOT use
+# PKG_LIBS for the same reason inverted: make expands an entire recipe
+# before executing any of its lines, so on a from-scratch build the file
+# does not exist yet at expansion time and the native libs would silently
+# come out empty (a link failure for the document binary, and, worse, on
+# a linker that tolerates it, an under-linked shared object). That step
+# uses a shell-level `$$(cat ...)` instead, evaluated when the line runs.
+NATIVE_LIBS = $(TARGET_DIR)/native-libs.txt
+PKG_LIBS = -L$(LIBDIR) -lrattlerthis $(shell cat $(NATIVE_LIBS) 2>/dev/null)
 
 all: $(SHLIB) rust_clean
 
@@ -11,42 +41,73 @@ $(SHLIB): $(STATLIB)
 
 CARGOTMP = $(CURDIR)/.cargo
 VENDOR_DIR = $(CURDIR)/vendor
+VENDOR_MARKER = $(VENDOR_DIR)/.extracted-from-vendor-tarball
 
 
-# RUSTFLAGS appends --print=native-static-libs to ensure that 
-# the correct linkers are used. Use this for debugging if need. 
+# RUSTFLAGS appends --print=native-static-libs so the build recipe below can
+# capture it into $(NATIVE_LIBS) for PKG_LIBS (see the comment above it).
 #
 # CRAN note: Cargo and Rustc versions are reported during
 # configure via tools/msrv.R.
 #
-# If a vendor directory exists, it is used for offline compilation. Otherwise if
-# vendor.tar.xz exists, it is unzipped and used for offline compilation.
+# If vendor.tar.xz exists, it is extracted and used for offline compilation.
+# A vendor directory left by an earlier extraction (marked with
+# $(VENDOR_MARKER)) is extracted again: a failed build skips rust_clean, and
+# reusing its tree would build a stale or older dependency set. A vendor
+# directory without the marker was supplied by hand and is used as is.
+# Cargo skips dot-files in a vendor directory, so the marker is harmless.
 $(STATLIB):
 
-	if [ -d ./vendor ]; then \
-		echo "=== Using offline vendor directory ==="; \
-		mkdir -p $(CARGOTMP) && \
-		cp rust/vendor-config.toml $(CARGOTMP)/config.toml; \
-	elif [ -f ./rust/vendor.tar.xz ]; then \
+	if [ -f ./rust/vendor.tar.xz ] && { [ ! -d ./vendor ] || [ -f "$(VENDOR_MARKER)" ]; }; then \
 		echo "=== Using offline vendor tarball ==="; \
+		rm -rf ./vendor && \
 		tar xf rust/vendor.tar.xz && \
-		mkdir -p $(CARGOTMP) && \
-		cp rust/vendor-config.toml $(CARGOTMP)/config.toml; \
+		touch "$(VENDOR_MARKER)" && \
+		mkdir -p "$(CARGOTMP)" && \
+		cp rust/vendor-config.toml "$(CARGOTMP)/config.toml"; \
+	elif [ -d ./vendor ]; then \
+		echo "=== Using offline vendor directory ==="; \
+		mkdir -p "$(CARGOTMP)" && \
+		cp rust/vendor-config.toml "$(CARGOTMP)/config.toml"; \
 	fi
 
-	export CARGO_HOME=$(CARGOTMP) && \
+	mkdir -p "$(TARGET_DIR)" && \
+	export CARGO_HOME="$(CARGOTMP)" && \
 	export PATH="$(PATH):$(HOME)/.cargo/bin" && \
-	@PANIC_EXPORTS@RUSTFLAGS="$(RUSTFLAGS) --print=native-static-libs" cargo build @CRAN_FLAGS@ --lib @PROFILE@ --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR) @TARGET@
+	@PANIC_EXPORTS@RUSTFLAGS="$(RUSTFLAGS) --print=native-static-libs" cargo build @CRAN_FLAGS@ --lib @PROFILE@ --manifest-path=./rust/Cargo.toml --target-dir="$(TARGET_DIR)" @TARGET@ 2> "$(TARGET_DIR)/cargo-build.stderr"; \
+	build_status=$$?; \
+	cat "$(TARGET_DIR)/cargo-build.stderr" 1>&2; \
+	grep 'native-static-libs:' "$(TARGET_DIR)/cargo-build.stderr" | tail -n1 | sed 's/.*native-static-libs: *//' > $(NATIVE_LIBS); \
+	exit $$build_status
 
-	export CARGO_HOME=$(CARGOTMP) && \
-	export PATH="$(PATH):$(HOME)/.cargo/bin" && \
-	cargo run @CRAN_FLAGS@ --bin document --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR) @TARGET@
+	# Regenerate R/extendr-wrappers.R by linking extendr's own C entry point
+	# against the static lib (replaces the old `cargo run --bin document`,
+	# which rebuilt the whole dependency graph a second time at install).
+	#
+	# Two gates, covering two different problems:
+	# - The tools/config.R-filled flag (empty on CRAN): the generated file
+	#   is committed, and writing into the package source tree during
+	#   `R CMD INSTALL` is something CRAN discourages and that fails on a
+	#   read-only source tree.
+	# - $ROXYGEN_PKG (set by roxygen2 only while documenting; upstream
+	#   rextendr's fix for "crate compiles twice", #541): without it, every
+	#   dev build rewrote the wrappers, and the mtime churn made the next
+	#   build treat sources as changed and recompile the whole crate.
+	#   Wrappers only need regenerating when documenting anyway.
+	if [ -n "@DOCUMENT_FLAG@" ] && [ -n "$$ROXYGEN_PKG" ]; then \
+		echo "=== Regenerating R/extendr-wrappers.R ==="; \
+		$(CC) -o $(DOCUMENT) rust/document.c -L$(LIBDIR) -lrattlerthis $$(cat $(NATIVE_LIBS)) -L"$(R_HOME)/lib$(R_ARCH)" -lR && \
+		./$(DOCUMENT) $(R_PACKAGE_NAME) ../R/extendr-wrappers.R; \
+		doc_status=$$?; \
+		rm -f $(DOCUMENT); \
+		exit $$doc_status; \
+	fi
 
 	# Always clean up CARGOTMP
-	rm -Rf $(CARGOTMP);
+	rm -Rf "$(CARGOTMP)";
 
 rust_clean: $(SHLIB)
-	rm -Rf $(CARGOTMP) $(VENDOR_DIR) @CLEAN_TARGET@
+	rm -Rf "$(CARGOTMP)" "$(VENDOR_DIR)" @CLEAN_TARGET@
 
 clean:
-	rm -Rf $(SHLIB) $(STATLIB) $(OBJECTS) $(TARGET_DIR) $(VENDOR_DIR)
+	rm -Rf $(SHLIB) $(STATLIB) $(OBJECTS) "$(TARGET_DIR)" "$(VENDOR_DIR)" $(DOCUMENT)

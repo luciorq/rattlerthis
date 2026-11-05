@@ -1,0 +1,39 @@
+{
+ "info": {
+  "subdir": "noarch"
+ },
+ "packages": {
+  "bar-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [
+    "foo >=2"
+   ],
+   "license": "MIT",
+   "md5": "21e1453dee862501e0835ebc5dba55ae",
+   "name": "bar",
+   "noarch": "generic",
+   "sha256": "a880042bdd90b310b054f6373c99946fb1ee642a1bf15e774ec502898d273534",
+   "size": 444,
+   "subdir": "noarch",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  },
+  "foo-2.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "bc6950025d110326bddc541766853395",
+   "name": "foo",
+   "noarch": "generic",
+   "sha256": "4a27931c6867a18b90f6e137debb554ce2ee375652c97ff45c77802ea71f4a39",
+   "size": 431,
+   "subdir": "noarch",
+   "timestamp": 1700000000000,
+   "version": "2.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}

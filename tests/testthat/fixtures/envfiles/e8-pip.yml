@@ -1,0 +1,10 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e8: a pip section. Both backends add `pip` to the specs and run
+# `python -m pip install -r <file> --no-input` after the create; chA has no
+# pip, so neither solves.
+channels:
+  - @CHANNEL_DIR@/chA
+dependencies:
+  - foo
+  - pip:
+    - six==1.16.0

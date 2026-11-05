@@ -1,0 +1,7 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e5: a plain spec list: one spec per line; blank lines, comment lines and
+# trailing comments are ignored. Channels come from the command line
+# (`-c chA -c chC`): foo 1.0 and baz 1.0.
+
+foo
+  baz  # trailing comment

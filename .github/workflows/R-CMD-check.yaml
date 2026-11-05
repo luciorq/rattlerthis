@@ -1,0 +1,125 @@
+# R CMD check and the full test suite of rattlerthis on Linux, macOS and
+# Windows x64. Windows on ARM64 runs in win-arm64.yaml.
+#
+# + condathis comes from the `Remotes` field of DESCRIPTION (one ref only:
+#   pak refuses a second ref of the same package in `extra-packages`), so
+#   that ref must be pushed before this workflow can pass.
+# + `R CMD check` runs with `--no-tests`; the next step runs the suite once,
+#   against the package the check installed, and fails unless there is no
+#   failure, no error and exactly 2 skips (the 2 wheel tests: the `wheels`
+#   Cargo feature is off). See .github/scripts/run-tests.R.
+# + micromamba 2.10.0 (condathis's default) is downloaded once, checked
+#   against its SHA-256 and passed as CONDATHIS_MICROMAMBA_PATH: the parity
+#   tests compare `method = "micromamba"` with `method = "rattler"`, and no
+#   test downloads micromamba itself.
+# + Rust: the runner images ship rustup. Windows uses the
+#   x86_64-pc-windows-gnu host toolchain, as the Windows x64 machine where
+#   the package is developed: the C code of `zstd-sys` (the only crate of
+#   the Windows build with C code) is then built with Rtools's `gcc`. With
+#   the MSVC host, cc-rs would cross-compile it with
+#   `x86_64-w64-mingw32-gcc`, which Rtools45 does not ship.
+#   `tools/config.R` picks the target from R itself.
+---
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**'
+      - '!.github/**'
+      - '.github/workflows/R-CMD-check.yaml'
+      - '.github/scripts/**'
+
+  pull_request:
+    paths:
+      - '**'
+      - '!.github/**'
+      - '.github/workflows/R-CMD-check.yaml'
+      - '.github/scripts/**'
+
+  workflow_dispatch:
+
+name: R-CMD-check
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 120
+
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: ubuntu-latest, r: 'release'}
+          - {os: macos-latest, r: 'release'}
+          - {os: windows-latest, r: 'release'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: true
+      MICROMAMBA_VERSION: 2.10.0-0
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          use-public-rspm: true
+
+      - name: Set up Rust
+        shell: bash
+        run: |
+          if ! command -v rustup > /dev/null 2>&1; then
+            if [ "${RUNNER_OS}" = "Windows" ]; then
+              init="$(cygpath -u "${RUNNER_TEMP}")/rustup-init.exe"
+              curl -fsSL --retry 5 -o "${init}" https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
+              "${init}" -y --no-modify-path --profile minimal --default-toolchain none
+              cargo_bin="$(cygpath -u "${USERPROFILE}")/.cargo/bin"
+              cygpath -w "${cargo_bin}" >> "${GITHUB_PATH}"
+            else
+              curl --proto '=https' --tlsv1.2 -fsSL --retry 5 https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
+              cargo_bin="${HOME}/.cargo/bin"
+              echo "${cargo_bin}" >> "${GITHUB_PATH}"
+            fi
+            export PATH="${cargo_bin}:${PATH}"
+          fi
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            toolchain="stable-x86_64-pc-windows-gnu"
+          else
+            toolchain="stable"
+          fi
+          rustup toolchain install "${toolchain}" --profile minimal --no-self-update
+          rustup default "${toolchain}"
+          rustup show
+          rustc -vV
+          cargo --version
+
+      - name: Set up micromamba for the parity tests
+        shell: bash
+        run: bash .github/scripts/install-micromamba.sh "${MICROMAMBA_VERSION}"
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          args: 'c("--no-manual", "--as-cran", "--no-tests")'
+          build_args: 'c("--no-manual")'
+          error-on: '"error"'
+          check-dir: '"check"'
+
+      - name: Test (0 failures, 0 errors, exactly 2 skips)
+        shell: bash
+        run: Rscript .github/scripts/run-tests.R check 2

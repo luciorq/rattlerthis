@@ -1,0 +1,23 @@
+{
+ "info": {
+  "subdir": "noarch"
+ },
+ "packages": {
+  "plink-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "2fabdb2f42bb2ae86d23a26803de81f5",
+   "name": "plink",
+   "noarch": "generic",
+   "sha256": "051cb07e7e42e40d304336f9746946675cc0f5ea0f65376567da55b18a038b9e",
+   "size": 1013,
+   "subdir": "noarch",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}

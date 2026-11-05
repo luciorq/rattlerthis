@@ -1,0 +1,17 @@
+{
+  "lockVersion": "1.0.0",
+  "platform": "linux-64",
+  "channels": ["chC"],
+  "channelInfo": {"chC": [{"url": "@CHANNEL_DIR@/chC"}]},
+  "packages": {
+    "baz-1.0-0.tar.bz2": {
+      "name": "baz",
+      "version": "1.0",
+      "build": "0",
+      "subdir": "noarch",
+      "channel": "chC",
+      "hash": {"sha256": "@SHA256:chC/noarch/baz-1.0-0.tar.bz2@"}
+    }
+  },
+  "pipPackages": {}
+}

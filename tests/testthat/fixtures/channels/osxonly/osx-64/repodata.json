@@ -1,0 +1,22 @@
+{
+ "info": {
+  "subdir": "osx-64"
+ },
+ "packages": {
+  "osxonly-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "e2e1a32ff0e9b5fd36eac263da421988",
+   "name": "osxonly",
+   "sha256": "4e883d080db0cfe9cb14305fb6976e6f2d29c1bfdc7551cdb0dbfa48287b3929",
+   "size": 432,
+   "subdir": "osx-64",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}

@@ -1,0 +1,5 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e11: an explicit file whose md5 does not match the package: both backends
+# refuse it and create nothing.
+@EXPLICIT
+@CHANNEL_DIR@/chA/noarch/foo-1.0-0.tar.bz2#00000000000000000000000000000000

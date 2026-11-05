@@ -1,38 +1,42 @@
 Package: rattlerthis
-Title: Run Any CLI Tool on a 'Conda' Environment Powered by 'rattler'
-Version: 0.0.0.9001
+Title: The 'rattler' Backend for 'condathis'
+Version: 0.0.0.9002
 Authors@R:
     person("Lucio", "Queiroz", , "luciorqueiroz@gmail.com", role = c("aut", "cre", "cph"))
-Description: Creates and manages 'Conda' environments and runs command
-    line tools inside them, without shelling out to an external package
-    manager binary. Environment solving, package installation, and shell
-    activation are implemented natively via Rust bindings (using
-    'rextendr') to the 'rattler' library
-    (<https://github.com/conda/rattler>), the same engine that powers
-    'pixi'.
+Description: Solves, installs and activates 'Conda' environments in the R
+    process through Rust bindings (using 'rextendr') to the 'rattler'
+    library (<https://github.com/conda/rattler>), the engine that powers
+    'pixi', without an external package manager binary. It is the
+    "rattler" backend of 'condathis' and exports no functions: use the
+    functions of 'condathis' with method = "rattler".
 License: MIT + file LICENSE
 URL: https://github.com/luciorq/rattlerthis
 BugReports: https://github.com/luciorq/rattlerthis/issues
 Depends:
-    R (>= 4.2)
+    R (>= 4.3)
 Imports:
     cli,
+    condathis (>= 0.2.0),
     fs,
-    jsonlite,
     processx,
-    rlang,
-    tibble,
-    tools,
-    withr
+    rlang
 Suggests:
-    curl,
-    testthat (>= 3.0.0)
+    callr,
+    jsonlite,
+    parallel,
+    ps,
+    testthat (>= 3.0.0),
+    withr
+Remotes:
+    luciorq/condathis@feat-strict-defaults
+Config/condathis/backend: rattler
 Config/Needs/dev: devtools, pkgload, remotes, rcmdcheck, covr, testthat,
     usethis, pak, knitr, quarto, pkgdown, roxygen2, roxygen2md, lintr,
-    styler, rextendr
-Config/rextendr/version: 0.5.0
+    styler, extendr/rextendr
+Config/rextendr/version: 0.5.0.9000
 Config/roxygen2/markdown: TRUE
 Config/roxygen2/version: 8.0.0
 Config/testthat/edition: 3
 Encoding: UTF-8
-SystemRequirements: Cargo (Rust's package manager), rustc >= 1.75.0, OpenSSL on Linux (libssl-dev / openssl-devel)
+SystemRequirements: GNU make, Cargo (Rust's package manager), rustc >=
+    1.88.0, OpenSSL on Linux (libssl-dev / openssl-devel)

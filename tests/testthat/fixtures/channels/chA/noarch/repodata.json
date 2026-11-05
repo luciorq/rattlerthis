@@ -1,0 +1,23 @@
+{
+ "info": {
+  "subdir": "noarch"
+ },
+ "packages": {
+  "foo-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "e4faa4f328bf0a51ebfdb10903078783",
+   "name": "foo",
+   "noarch": "generic",
+   "sha256": "069ec5c820922dded8db0d0b3062d822bff6a302a81cf124a2bbd88354a6dff0",
+   "size": 429,
+   "subdir": "noarch",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}

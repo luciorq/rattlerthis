@@ -1,0 +1,22 @@
+{
+ "info": {
+  "subdir": "win-64"
+ },
+ "packages": {
+  "winonly-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "77d43bd8439a0b7635aa22fa3b18f377",
+   "name": "winonly",
+   "sha256": "a59ddefd70f64ec1ecf9ef44e7d940be5647dee3f794cb172d40519c0af8459c",
+   "size": 428,
+   "subdir": "win-64",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}

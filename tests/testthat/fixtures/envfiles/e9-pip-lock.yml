@@ -1,0 +1,120 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e9: a conda-lock file with a pip package for every platform. Both
+# backends install it with `python -m pip install --no-deps -r <file>
+# --no-input` after the conda packages; the environment has no python, so
+# that step fails with both.
+version: 1
+metadata:
+  content_hash: {linux-64: e9}
+  channels: [{url: '@CHANNEL_DIR@/chC', used_env_vars: []}]
+  platforms: [linux-64, linux-aarch64, osx-64, osx-arm64, win-64, win-arm64]
+  sources: [environment.yml]
+package:
+- name: baz
+  version: '1.0'
+  manager: conda
+  platform: linux-64
+  dependencies: {}
+  url: '@CHANNEL_DIR@/chC/noarch/baz-1.0-0.tar.bz2'
+  hash: {md5: '@MD5:chC/noarch/baz-1.0-0.tar.bz2@', sha256: '@SHA256:chC/noarch/baz-1.0-0.tar.bz2@'}
+  category: main
+  optional: false
+- name: six
+  version: 1.16.0
+  manager: pip
+  platform: linux-64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl
+  hash: {sha256: 8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254}
+  category: main
+  optional: false
+- name: baz
+  version: '1.0'
+  manager: conda
+  platform: linux-aarch64
+  dependencies: {}
+  url: '@CHANNEL_DIR@/chC/noarch/baz-1.0-0.tar.bz2'
+  hash: {md5: '@MD5:chC/noarch/baz-1.0-0.tar.bz2@', sha256: '@SHA256:chC/noarch/baz-1.0-0.tar.bz2@'}
+  category: main
+  optional: false
+- name: six
+  version: 1.16.0
+  manager: pip
+  platform: linux-aarch64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl
+  hash: {sha256: 8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254}
+  category: main
+  optional: false
+- name: baz
+  version: '1.0'
+  manager: conda
+  platform: osx-64
+  dependencies: {}
+  url: '@CHANNEL_DIR@/chC/noarch/baz-1.0-0.tar.bz2'
+  hash: {md5: '@MD5:chC/noarch/baz-1.0-0.tar.bz2@', sha256: '@SHA256:chC/noarch/baz-1.0-0.tar.bz2@'}
+  category: main
+  optional: false
+- name: six
+  version: 1.16.0
+  manager: pip
+  platform: osx-64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl
+  hash: {sha256: 8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254}
+  category: main
+  optional: false
+- name: baz
+  version: '1.0'
+  manager: conda
+  platform: osx-arm64
+  dependencies: {}
+  url: '@CHANNEL_DIR@/chC/noarch/baz-1.0-0.tar.bz2'
+  hash: {md5: '@MD5:chC/noarch/baz-1.0-0.tar.bz2@', sha256: '@SHA256:chC/noarch/baz-1.0-0.tar.bz2@'}
+  category: main
+  optional: false
+- name: six
+  version: 1.16.0
+  manager: pip
+  platform: osx-arm64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl
+  hash: {sha256: 8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254}
+  category: main
+  optional: false
+- name: baz
+  version: '1.0'
+  manager: conda
+  platform: win-64
+  dependencies: {}
+  url: '@CHANNEL_DIR@/chC/noarch/baz-1.0-0.tar.bz2'
+  hash: {md5: '@MD5:chC/noarch/baz-1.0-0.tar.bz2@', sha256: '@SHA256:chC/noarch/baz-1.0-0.tar.bz2@'}
+  category: main
+  optional: false
+- name: six
+  version: 1.16.0
+  manager: pip
+  platform: win-64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl
+  hash: {sha256: 8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254}
+  category: main
+  optional: false
+- name: baz
+  version: '1.0'
+  manager: conda
+  platform: win-arm64
+  dependencies: {}
+  url: '@CHANNEL_DIR@/chC/noarch/baz-1.0-0.tar.bz2'
+  hash: {md5: '@MD5:chC/noarch/baz-1.0-0.tar.bz2@', sha256: '@SHA256:chC/noarch/baz-1.0-0.tar.bz2@'}
+  category: main
+  optional: false
+- name: six
+  version: 1.16.0
+  manager: pip
+  platform: win-arm64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl
+  hash: {sha256: 8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254}
+  category: main
+  optional: false

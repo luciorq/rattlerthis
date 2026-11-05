@@ -38,7 +38,13 @@ uv.lock
 *.so
 *.dylib
 *.dll
-src/rust/vendor/
+src/vendor/
+src/.cargo/
+src/rust/target/
+# The vendored crates stay out of git: a build without them fetches the
+# crates online (as CI does); `just update-vendor` writes them for offline
+# builds.
+src/rust/vendor.tar.xz
 src/Makevars
 src/Makevars.win
 .Rdata

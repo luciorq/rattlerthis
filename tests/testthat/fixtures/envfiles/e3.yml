@@ -1,0 +1,16 @@
+# Environment file fixture (template); placeholders and channels as in e1.yml.
+# e3: selectors, evaluated for the machine (micromamba evaluates them for its
+# own platform, also with --platform): Linux gets foo and baz, macOS devtool
+# and baz, Windows baz only. Entries that are lists, nulls or other mappings
+# are ignored.
+channels:
+  - @CHANNEL_DIR@/chA
+  - @CHANNEL_DIR@/chC
+  - @CHANNEL_DIR@/chD
+dependencies:
+  - sel(linux): foo
+  - sel(osx): devtool
+  - sel(unix): baz
+  - sel(win): baz
+  - [ignored, list]
+  - other: ignored

@@ -1,0 +1,12 @@
+Test-only TLS files for the HTTPS channel of the network tests
+(rt_test_https_server(), local_https_channel() in helper-network.R, and
+the Rust tests of src/rust/src/netenv.rs). Nothing here protects anything:
+
+  ca.pem          a throwaway certificate authority "rattlerthis test CA"
+                  (its key was discarded after signing)
+  server.pem      the server certificate it signed, for 127.0.0.1 and
+                  localhost
+  server-key.der  that certificate's private key (PKCS#8, DER)
+
+Validity 2019-01-01 to 2119-01-01: macOS limits TLS server certificates
+issued after 2019-07-01 to 825 days, so the dates keep the files usable.

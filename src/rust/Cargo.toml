@@ -3,20 +3,52 @@ name = 'rattlerthis'
 publish = false
 version = '0.1.0'
 edition = '2021'
-rust-version = '1.75'
+# The real floor imposed by the dependency graph, not an aspiration: as of
+# 2026-08-12 `darling` 0.23, `libloading` 0.9, `plist` 1.10, `serde_with`
+# 3.21, `simd-json` 0.17 and `time` 0.3.53 all require 1.88. Recompute with
+# `just check-msrv` after any dependency bump -- see TODO.md for the CRAN
+# headroom this has to stay inside.
+rust-version = '1.88'
 
 [lib]
 crate-type = [ 'rlib', 'staticlib' ]
 name = 'rattlerthis'
 
-[[bin]]
-name = 'document'
-path = 'document.rs'
-
 [dependencies]
-extendr-api = '0.9'
-tokio = { version = '1', default-features = false, features = ['rt-multi-thread'] }
+# Pinned to an exact extendr git revision, not crates.io 0.9.0: the wrapper
+# generation used by `src/rust/document.c` (the C-callable
+# `write__make_rattlerthis_wrappers`, emitted by `extendr_module!`) only
+# exists on extendr's development branch. That C entry point is what lets the
+# build drop the old `[[bin]] document` Rust binary -- which used to require
+# a second full `cargo run` over the whole dependency graph at install time,
+# and wrote wrappers from a hand-maintained copy of extendr's own header.
+# Kept as an exact `rev` rather than a branch so the build is reproducible
+# and the vendored tree matches a single known commit.
+# See TODO.md "Milestone: dev rextendr/extendr toolchain".
+extendr-api = { git = 'https://github.com/extendr/extendr', rev = '74afddcbbe5a441ec187ce1d4010ba95e466ed2a' }
+# `time`, `macros` and `sync` drive the job model (`job.rs`): timed polling
+# of locks and of the activation shell, and `select!` against a job's
+# cancellation token. These tokio features were already compiled in through
+# rattler, so they add no crate.
+tokio = { version = '1', default-features = false, features = ['rt-multi-thread', 'time', 'macros', 'sync', 'net', 'io-util'] }
+tokio-util = { version = '0.7', default-features = false }
 thiserror = '2'
+futures = { version = '0.3', default-features = false, features = ['std', 'executor'] }
+# rattler links packages on rayon. rattlerthis gives it a private pool per
+# process (`runtime.rs`) instead of rayon's global one, whose worker threads
+# do not survive `fork()`.
+rayon = '1'
+# Exclusive lock on `<prefix>/conda-meta/conda-meta.lock` (libmamba's lock file
+# name) for the duration of an install, and a cancellable wait on the package
+# cache's global lock.
+fs4 = '1'
+# The activation script is written to a temporary directory.
+tempfile = '3'
+# `kill(-pgid, SIGKILL)` for a cancelled activation shell and its children,
+# and the C library's local time for the `==> <date> <==` lines of
+# `conda-meta/history`, as libmamba formats them (`std::localtime`). The
+# vendored `chrono` and `jiff` time zone crates are stubs.
+libc = '0.2'
 
 # TLS: `native-tls` instead of `rustls` deliberately -- it links the
 # platform's own TLS (Secure Transport on macOS, SChannel on Windows, system
@@ -26,31 +58,85 @@ thiserror = '2'
 # is already a de facto requirement for the R ecosystem (the `curl` and
 # `openssl` CRAN packages need it too) and is present on CRAN's build
 # machines. See PLAN.md "Vendoring and CRAN size" / TODO.md.
-rattler = { version = '0.47', default-features = false, features = ['native-tls'] }
-rattler_conda_types = { version = '0.48' }
+rattler = { version = '0.48', default-features = false, features = ['native-tls'] }
+rattler_conda_types = { version = '0.52' }
 rattler_digest = { version = '1', default-features = false }
-rattler_solve = { version = '7', default-features = false, features = ['resolvo'] }
-rattler_repodata_gateway = { version = '0.30', default-features = false, features = ['gateway', 'native-tls'] }
+rattler_solve = { version = '9', default-features = false, features = ['resolvo'] }
+rattler_repodata_gateway = { version = '0.33', default-features = false, features = ['gateway', 'native-tls'] }
 rattler_shell = { version = '0.27' }
-rattler_virtual_packages = { version = '3' }
+rattler_virtual_packages = { version = '6' }
 rattler_cache = { version = '0.10', default-features = false, features = ['native-tls'] }
 url = '2'
+
+# One HTTP client per job (`net.rs`): libmamba's 10 s connect timeout and its
+# retries (3 retries, 2 s apart, for HTTP 413, 429, 5xx and connection
+# errors) as a middleware on rattler's own middleware stack. `reqwest` was
+# already compiled in through rattler; `astral-reqwest-middleware` is the
+# package that provides rattler's `reqwest_middleware` crate.
+reqwest = { version = '0.13', default-features = false, features = ['native-tls', 'socks'] }
+reqwest-middleware = { package = 'astral-reqwest-middleware', version = '0.5' }
+async-trait = '0.1'
+http = '1'
+# `LazyClient`: the HTTP client is built on first use only, so work on local
+# channels never initializes the TLS library (see `net.rs`, fork safety).
+rattler_networking = { version = '0.30', default-features = false }
+# The credentials micromamba reads (`netenv.rs`): base64 passwords of
+# `~/.mamba/auth/authentication.json` and `Authorization: Basic` headers.
+# Already in the lock through rattler. reqwest's `socks` feature (above)
+# adds SOCKS proxies, as libcurl has them, and no crate.
+base64 = '0.22'
+# The HTTPS server of the network tests (`testserver.rs`,
+# `rt_test_https_server()`): R has no TLS server. Both crates are in the
+# lock through reqwest's `native-tls`; tokio's `net` and `io-util` were
+# compiled in through it too.
+native-tls = '0.2'
+tokio-native-tls = '0.3'
+# The modes of the files of a package archive, which micromamba keeps and
+# rattler's extraction does not (`pkgfile.rs`). In the lock through
+# rattler_package_streaming.
+tar = '0.4'
+
+
+# Environment files (`envfile.rs`): YAML environment files and conda-lock
+# files are read with `serde_yaml` (pure Rust, through `unsafe-libyaml`),
+# mambajs lock files with `serde_json`. Explicit files and lock
+# files are installed without a solve (`explicit.rs`), which extracts
+# packages into the package cache with `rattler_package_streaming` (its
+# `reqwest` feature for HTTP URLs). All of these were already compiled in
+# through rattler.
+serde = { version = '1', features = ['derive'] }
+serde_yaml = '0.9'
+serde_json = '1'
+rattler_package_streaming = { version = '0.27', default-features = false, features = ['reqwest'] }
 
 # Wheel installation (the `conda-pypi` channel serves raw `.whl` files that
 # rattler's own Installer/PackageCache do not yet know how to fetch or link;
 # see PLAN.md "Wheel packages"). Gated behind the `wheels` feature, off by
 # default: it is not part of the minimal solve/install/activate/run surface
-# and its `reqwest` + `zip` stack is the largest addressable chunk of the
-# vendored dependency tree after TLS. See PLAN.md "Vendoring and CRAN size".
-reqwest = { version = '0.13', default-features = false, features = ['native-tls'], optional = true }
+# and its `zip` stack is a large addressable chunk of the vendored
+# dependency tree. See PLAN.md "Vendoring and CRAN size".
 zip = { version = '8', default-features = false, features = ['deflate'], optional = true }
+
+# The identity (volume serial number and file index) of a lock file on
+# Windows, so a lock can tell whether its file was removed while it waited
+# (`lock.rs`). Already in the lock as a dependency of other crates.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = '0.61', features = ['Win32_Foundation', 'Win32_Storage_FileSystem'] }
+
 
 [features]
 default = []
-wheels = ['dep:reqwest', 'dep:zip']
+wheels = ['dep:zip']
 
 [dev-dependencies]
-tempfile = '3'
+# Package archives with chosen file modes (`pkgfile.rs` tests). All three
+# are in the lock through rattler_package_streaming.
+bzip2 = '0.6'
+zstd = '0.13'
+zip = { version = '8', default-features = false }
+# (The tiny `.tar.bz2` packages of the local test channels are built with
+# `rattler_package_streaming`, and their repodata with `serde_json`, both
+# regular dependencies above.)
 
 [profile.release]
 lto = true

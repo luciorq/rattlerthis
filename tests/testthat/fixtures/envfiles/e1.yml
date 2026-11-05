@@ -1,0 +1,17 @@
+# Environment file fixture (template). The test helper replaces, before use,
+# @CHANNEL_DIR@ by the file:// URL of the directory that holds the test
+# channels (no trailing slash), and a token such as
+# @MD5:chA/noarch/foo-1.0-0.tar.bz2@ or @SHA256:chA/noarch/foo-1.0-0.tar.bz2@
+# by the md5 or sha256 of that file in the channel directory.
+# Channels used by these fixtures (noarch packages, build "0"):
+#   chA: foo 1.0;  chB: foo 2.0, bar 1.0 (depends foo >=2);  chC: baz 1.0;
+#   chD: devtool 1.0;  plink: plink 1.0 (pre-link, post-link and pre-unlink
+#   scripts).
+#
+# e1: `name:` is ignored (condathis names the environment) and command-line
+# channels come first: with `-c chA` and strict priority, foo 1.0 from chA.
+name: other
+channels:
+  - @CHANNEL_DIR@/chB
+dependencies:
+  - foo

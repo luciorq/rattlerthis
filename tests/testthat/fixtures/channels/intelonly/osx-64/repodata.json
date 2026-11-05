@@ -1,0 +1,22 @@
+{
+ "info": {
+  "subdir": "osx-64"
+ },
+ "packages": {
+  "intelonly-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "3bc9c0c854f2410019ca792ce4b59f0d",
+   "name": "intelonly",
+   "sha256": "1a3fa15dd607e902e51b8988d5cd0ecb8539a9c3d067877f1c33a6290424d019",
+   "size": 440,
+   "subdir": "osx-64",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}

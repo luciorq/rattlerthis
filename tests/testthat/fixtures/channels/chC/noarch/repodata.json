@@ -1,0 +1,23 @@
+{
+ "info": {
+  "subdir": "noarch"
+ },
+ "packages": {
+  "baz-1.0-0.tar.bz2": {
+   "build": "0",
+   "build_number": 0,
+   "depends": [],
+   "license": "MIT",
+   "md5": "2aef9a0caa5df8195615ddd4d0dcd691",
+   "name": "baz",
+   "noarch": "generic",
+   "sha256": "eb94bc8faad7794b32d500f9b311f06bf4fed83c607e242ce56b2088f8479925",
+   "size": 438,
+   "subdir": "noarch",
+   "timestamp": 1700000000000,
+   "version": "1.0"
+  }
+ },
+ "packages.conda": {},
+ "repodata_version": 1
+}
