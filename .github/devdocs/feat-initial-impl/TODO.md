@@ -60,14 +60,14 @@ whether the gateway still emits duplicate records (below).
 
 ## Open
 
-- [ ] `.github/workflows/win-arm64.yaml` on `windows-11-arm`: the first
+- [x] `.github/workflows/win-arm64.yaml` on `windows-11-arm`: the first
       run (2026-11-05, run 41948564276) built, loaded and tested the ARM64
-      DLL natively, with 11 test failures and a failed DLL check step. The
-      fixes (python 3.14 where conda-forge has no 3.12 for win-arm64, the
-      quoted platform in the emulation message, `cygpath -m` for
-      `llvm-objdump`) are in PR #2; check them with a passing run. One
-      failure may remain: after a failing pip step, one backend left its
-      environment directory (only seen under x64 emulation).
+      DLL natively, with 11 test failures and a failed DLL check step. With
+      the fixes of PR #2 (python 3.14 where conda-forge has no 3.12 for
+      win-arm64, the quoted platform in the emulation message, `cygpath -m`
+      for `llvm-objdump`), run 41961267989 passed: 0 failures, 0 errors,
+      2 skips, and the DLL check. The environment a failing pip step had
+      left behind under x64 emulation is gone with native python.
 - [x] First run of `.github/workflows/R-CMD-check.yaml`: passed on Linux,
       macOS and Windows x64 (2026-11-05, run 41948564235). `Remotes` names
       condathis's `main` branch; pin a SHA if `main` breaks it.
