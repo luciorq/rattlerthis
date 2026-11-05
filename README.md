@@ -38,6 +38,12 @@ pak::pak("luciorq/rattlerthis")
 This also installs the `condathis` version that `rattlerthis` needs. The
 build downloads the Rust crates it needs from crates.io and GitHub.
 
+WebAssembly (webR) is not supported: rattler cannot be built for it, and
+webR cannot run the commands of an environment. There, `rattlerthis`
+installs without its Rust library, and `method = "rattler"` fails with an
+error of class `rattlerthis_rust_unavailable` (also
+`condathis_backend_unsupported`) that says so.
+
 ## Usage
 
 ```r

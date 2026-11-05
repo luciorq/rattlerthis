@@ -1,6 +1,37 @@
 # Note: Any variables prefixed with `.` are used for text
 # replacement in the Makevars.in and Makevars.win.in
 
+# WebAssembly (webR, which r-universe builds binaries for) is not supported,
+# and the package installs there without its Rust library instead of
+# failing to build. rattler cannot be compiled for
+# `wasm32-unknown-emscripten`: its HTTP stack needs tokio's `net` feature,
+# and `mio` stops with "This wasm target is unsupported by mio" (checked
+# with `cargo check --target wasm32-unknown-emscripten`, 2026-11-05). It
+# could not run either: webR cannot start the processes that condathis runs
+# in an environment. So, on webR, `src/Makevars` builds only
+# `src/wasm/init.c`, no Rust toolchain is needed or checked, and
+# `.onLoad()` registers a backend that is never available and explains why
+# (see `new_backend_rattler()`). This runs before every other check, so
+# none of them can fail the webR build.
+if (identical(R.version$platform, "wasm32-unknown-emscripten")) {
+  message(
+    "rattlerthis does not support WebAssembly (webR): building without ",
+    "its Rust library. The \"rattler\" backend of condathis is not ",
+    "available in this build."
+  )
+  con <- file("src/Makevars", open = "wb")
+  writeLines(
+    c(
+      "# Written by tools/config.R for WebAssembly (webR): no Rust library.",
+      "OBJECTS = wasm/init.o"
+    ),
+    con,
+    sep = "\n"
+  )
+  close(con)
+  quit(save = "no", status = 0L)
+}
+
 # On Linux, TLS is provided by `native-tls` linking system OpenSSL via
 # `openssl-sys`, which needs `pkg-config` and OpenSSL's *development*
 # headers (not just the runtime shared library) at build time -- see
@@ -79,38 +110,19 @@ if (!is_not_cran) {
 # between `R/extendr-wrappers.R` and the compiled symbols.
 .document_flag <- ifelse(is_not_cran, "1", "")
 
-# We specify this target when building for webR
-webr_target <- "wasm32-unknown-emscripten"
-
-# here we check if the platform we are building for is webr
-is_wasm <- identical(R.version$platform, webr_target)
-
-# print to terminal to inform we are building for webr
-if (is_wasm) {
-  message("Building for WebR")
-}
-
-# we check if we are making a debug build or not
-# if so, the LIBDIR environment variable becomes:
-# LIBDIR = $(TARGET_DIR)/{wasm32-unknown-emscripten}/debug
-# this will be used to fill out the LIBDIR env var for Makevars.in
-target_libpath <- if (is_wasm) "wasm32-unknown-emscripten" else NULL
+# The rextendr template's webR branches (a `--target`, the target
+# directory in LIBDIR and `panic = "abort"`) are gone: webR stops at the top
+# of this file and never builds the Rust library. The placeholders stay, so
+# `Makevars.in` matches the template.
 cfg <- if (is_debug) "debug" else "release"
 
 # used to replace @LIBDIR@
-.libdir <- paste(c(target_libpath, cfg), collapse = "/")
+.libdir <- cfg
 
-# use this to replace @TARGET@
-# we specify the target _only_ on webR
-# there may be use cases later where this can be adapted or expanded
-.target <- ifelse(is_wasm, paste0("--target=", webr_target), "")
-
-# add panic exports only for WASM builds
-.panic_exports <- ifelse(
-  is_wasm,
-  "CARGO_PROFILE_DEV_PANIC=\"abort\" CARGO_PROFILE_RELEASE_PANIC=\"abort\" ",
-  ""
-)
+# used to replace @TARGET@ and @PANIC_EXPORTS@ (both used only by the
+# template's webR build)
+.target <- ""
+.panic_exports <- ""
 
 # read in the Makevars.in file checking
 is_windows <- .Platform[["OS.type"]] == "windows"

@@ -19,12 +19,23 @@
 #' `<condathis::backend_root_dir("rattler")>/envs`, which the defaults list,
 #' read and remove as micromamba's file system rules do.
 #'
+#' A build without the Rust library (WebAssembly, see `tools/config.R`)
+#' gets the object of `new_backend_rattler_unsupported()` instead, so that
+#' the package still loads and registers, as condathis requires of a
+#' backend package it knows.
+#'
+#' @param rust_available `TRUE` when the Rust routines of the package are
+#'   loaded (see `rattler_rust_available()`).
+#'
 #' @returns A named list of class
 #'   `c("condathis_backend_rattler", "condathis_backend")`.
 #'
 #' @keywords internal
 #' @noRd
-new_backend_rattler <- function() {
+new_backend_rattler <- function(rust_available = rattler_rust_available()) {
+  if (isFALSE(rust_available)) {
+    return(new_backend_rattler_unsupported())
+  }
   return(structure(
     list(
       backend_create_env = rattler_backend_create_env,
@@ -38,6 +49,82 @@ new_backend_rattler <- function() {
     ),
     class = c("condathis_backend_rattler", "condathis_backend")
   ))
+}
+
+#' Whether the Rust routines of the package are loaded
+#'
+#' `FALSE` in a build without the Rust library: on WebAssembly (webR),
+#' `tools/config.R` compiles only `src/wasm/init.c`, which registers no
+#' routines. It checks the routine, not the platform, so the same rule holds
+#' for any build without Rust, and a test can build one on any platform.
+#'
+#' @returns `TRUE` or `FALSE`.
+#'
+#' @keywords internal
+#' @noRd
+rattler_rust_available <- function() {
+  return(isTRUE(is.loaded("wrap__rt_job_poll", PACKAGE = "rattlerthis")))
+}
+
+#' The rattler backend object of a build without the Rust library
+#'
+#' Registered instead of `new_backend_rattler()`'s object when
+#' `rattler_rust_available()` is `FALSE`. `backend_available()` is `FALSE`,
+#' so `method = "auto"` never picks it for a new environment. The three
+#' functions that condathis requires abort with
+#' `rattler_abort_rust_unavailable()`, so `method = "rattler"` fails with a
+#' condathis error that says why. They have the arguments of the real ones,
+#' which `condathis::register_backend()` checks. condathis's defaults supply
+#' the rest: they read the file system, and find no rattler environment.
+#'
+#' @returns A named list of class
+#'   `c("condathis_backend_rattler", "condathis_backend")`.
+#'
+#' @keywords internal
+#' @noRd
+new_backend_rattler_unsupported <- function() {
+  unsupported <- function(fn) {
+    stub <- function() rattler_abort_rust_unavailable()
+    formals(stub) <- formals(fn)
+    return(stub)
+  }
+  return(structure(
+    list(
+      backend_create_env = unsupported(rattler_backend_create_env),
+      backend_install = unsupported(rattler_backend_install),
+      backend_resolve_run = unsupported(rattler_backend_resolve_run),
+      backend_available = function(backend) FALSE
+    ),
+    class = c("condathis_backend_rattler", "condathis_backend")
+  ))
+}
+
+#' Abort because this build has no Rust library
+#'
+#' @param call Environment reported as the caller.
+#'
+#' @returns Does not return. The error has the classes
+#'   `rattlerthis_rust_unavailable`, `condathis_backend_unsupported` and
+#'   `rattlerthis_error`.
+#'
+#' @keywords internal
+#' @noRd
+rattler_abort_rust_unavailable <- function(call = rlang::caller_env()) {
+  platform <- R.version$platform
+  cli::cli_abort(
+    message = c(
+      `x` = "The {.field rattler} backend is not available in this build of {.pkg rattlerthis}.",
+      `i` = "It was built without its Rust library (R platform {.val {platform}}), which rattler needs. rattler cannot be built for WebAssembly (webR).",
+      `i` = "Install {.pkg rattlerthis} on Linux, macOS or Windows to use it."
+    ),
+    class = c(
+      "rattlerthis_rust_unavailable",
+      "condathis_backend_unsupported",
+      "rattlerthis_error"
+    ),
+    platform = platform,
+    call = call
+  )
 }
 
 #' Register this package as condathis's `"rattler"` backend
