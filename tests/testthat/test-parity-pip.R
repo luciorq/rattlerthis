@@ -21,6 +21,17 @@ ppip_local_pip <- function(env = parent.frame()) {
   return(invisible(NULL))
 }
 
+# The python version of these tests: one that conda-forge builds for the
+# platform of this R, so no create falls back to emulation and the solve
+# probe, which pins that platform, finds it. conda-forge builds python for
+# win-arm64 only from 3.14 on.
+ppip_python_version <- function() {
+  if (isTRUE(is_windows_arm64())) {
+    return("3.14")
+  }
+  return("3.12")
+}
+
 # The test wheel, copied into a new directory of the test.
 ppip_wheel <- function(env = parent.frame()) {
   dir <- withr::local_tempdir(pattern = "rt-ppip-wheel-", .local_envir = env)
@@ -53,7 +64,7 @@ ppip_yaml <- function(..., env = parent.frame()) {
       "channels:",
       "  - conda-forge",
       "dependencies:",
-      "  - python=3.12",
+      paste0("  - python=", ppip_python_version()),
       pip_lines
     ),
     env = env
@@ -92,13 +103,19 @@ ppip_rtwheel_version <- function(env_name, method) {
   return(trimws(res$stdout))
 }
 
-# The `site-packages` directory of python 3.12 in an environment.
+# The `site-packages` directory of the python of `ppip_python_version()`
+# in an environment.
 ppip_site_packages <- function(env_name, method) {
   prefix <- condathis::get_env_dir(env_name, method = method)
   if (isTRUE(is_windows())) {
     return(file.path(prefix, "Lib", "site-packages"))
   }
-  return(file.path(prefix, "lib", "python3.12", "site-packages"))
+  return(file.path(
+    prefix,
+    "lib",
+    paste0("python", ppip_python_version()),
+    "site-packages"
+  ))
 }
 
 # The rows of `psolve_packages()` from conda-forge, and those micromamba
@@ -189,7 +206,11 @@ test_that("pip sections of a YAML file install the same packages with both backe
     )
     expect_identical(
       specs,
-      "# update specs: [\"python=3.12\", \"pip\"]",
+      paste0(
+        "# update specs: [\"python=",
+        ppip_python_version(),
+        "\", \"pip\"]"
+      ),
       label = method
     )
   }
@@ -328,7 +349,7 @@ ppip_python_records <- function() {
   }
   env_name <- "rt-ppip-records"
   condathis::create_env(
-    c("python=3.12", "pip"),
+    c(paste0("python=", ppip_python_version()), "pip"),
     env_name = env_name,
     channels = "conda-forge",
     method = "rattler",
@@ -481,7 +502,12 @@ test_that("the solve probe of a file with a pip section answers alike (R-28)", {
   local_parity_micromamba()
   env_file <- ppip_yaml("rtwheel")
   local_file <- ppip_env_file(
-    c("dependencies:", "  - python=3.12", "  - pip:", "    - rtwheel")
+    c(
+      "dependencies:",
+      paste0("  - python=", ppip_python_version()),
+      "  - pip:",
+      "    - rtwheel"
+    )
   )
   platform <- r_build_platform()
   for (method in psolve_methods) {
