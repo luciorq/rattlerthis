@@ -208,6 +208,37 @@ still extendr's HEAD as of the 2026-08-28 re-check). Both are pinned to
 exact revisions rather than branches, so the build is reproducible and the
 vendored tree corresponds to one known commit.
 
+Re-checked 2026-11-05, against the git histories of both projects:
+
+- **The installed rextendr does not need to be the development version.**
+  Nothing in `R/`, the tests, `tools/`, the `justfile` or the CI
+  workflows calls rextendr: the templates are copied in, and the wrappers
+  come from extendr's C entry point (`document.c`, below). The two upstream
+  changes this package uses (#532 "Updates for Windows ARM64", merged
+  2026-08-04, and #541 "crate compiles twice", 2026-08-21) are in these
+  copied files. Neither is in rextendr 0.5.0 (2026-04-16), the CRAN
+  release, so a re-sync from upstream still has to come from `main`.
+  `Config/Needs/dev` therefore names the CRAN `rextendr` (it was
+  `extendr/rextendr`): the one function still planned,
+  `write_license_note()` (see "Checksum tooling"), is in 0.5.0.
+- **`Config/rextendr/version` was 0.5.0.9000, a version that does not
+  exist.** rextendr's `main` also reports `Version: 0.5.0` (it was not
+  bumped to a development version after the release), so every rextendr
+  function that runs `rextendr_setup()`, such as `use_extendr()`, warned
+  "Installed rextendr is older than the version used with this package".
+  It is now 0.5.0.
+- **The `extendr-api` git pin is still required.** The C entry point
+  `write__make_<module>_wrappers` was added to `extendr-macros` by extendr
+  #1101 ("new document-c method", `f0340f8`, 2026-06-29), after
+  `extendr-api` 0.9.0 (2026-04-16, the newest release on crates.io; 0.8.2 of
+  2026-07-31 is a backport release without it). The pinned `74afddc`
+  (2026-07-10) is in no release. extendr's `main` is 29 commits ahead of
+  it; none is about Windows or WebAssembly, and one fixes `extendr-ffi`
+  when R is not found (#1108, 2026-10-13). Move the pin to the first
+  extendr release that contains #1101, then to crates.io.
+- `Description:` said the bindings use 'rextendr'; they use 'extendr' (the
+  Rust crates). rextendr is the R tooling, which the package does not use.
+
 The `ed3fa0a` re-sync brought exactly one change, rextendr #541 ("crate
 compiles twice"): the document step is now additionally gated on
 `$ROXYGEN_PKG`, which roxygen2 sets only while documenting. Without it,
@@ -279,8 +310,10 @@ from `vendor/` with no network.
 
 ## Vendoring and CRAN size
 
-Current state (measured 2026-10-28): `src/rust/vendor.tar.xz` holds 421
-crates, 31.8MB compressed, 571MB unpacked. Since 2026-10-22,
+Current state (measured 2026-11-05): `src/rust/vendor.tar.xz` holds 421
+crates, 35.0MB compressed (34,967,928 bytes; 31.8MB and 571MB unpacked on
+2026-10-28). The tarball is not in git: see "Releasing the vendored
+tarball" below for when it is made and where it goes. Since 2026-10-22,
 `just update-vendor` runs `cargo vendor-filterer` once per platform and
 merges the trees, keeping a full copy of every crate that a shipped
 platform builds (a single multi-platform run had left some of them as empty
@@ -362,8 +395,10 @@ crates / 14MB compressed / 184MB unpacked (verified at the time:
    rebuilds `--offline` against the fresh tree, with and without
    `--features wheels`, as a sanity check before you commit). This is not
    automatic -- there is no CI step that detects a stale `vendor.tar.xz`
-   yet (see TODO.md); run it by hand after any `src/rust/Cargo.toml`/
-   `Cargo.lock` change and commit the regenerated tarball alongside.
+   yet (see TODO.md). The tarball stays out of git (`.gitignore`): after a
+   `src/rust/Cargo.toml`/`Cargo.lock` change, commit the `Cargo.lock` diff
+   only, and regenerate the tarball at the release points of "Releasing
+   the vendored tarball" below.
    Vendored for the **default** feature set (no `wheels`) -- that's what
    CRAN ships. `reqwest`/`zip` are already present unconditionally either
    way (see below), so this vendor tree also happens to support a local
@@ -405,6 +440,7 @@ Size history, all figures measured (compressed = `vendor.tar.xz`;
 | after rattler-family bump (2026-08-28)  | 421    | 14MB       | 190MB    |
 | pass 4 (content stripping)              | 421    | **11.7MB** | 150MB    |
 | per-platform merge (2026-10-22)         | 421    | 31.8MB     | 571MB    |
+| same recipe, re-run (2026-11-05)        | 421    | 35.0MB     | not measured |
 
 ### Where this stands with CRAN policy
 
@@ -424,26 +460,113 @@ folklore here is misleading:
   source tarballs. The `R CMD check` "installed size" NOTE also does not
   apply: the vendor tree is deleted after compilation (`rust_clean` in
   the Makevars), so the installed package is just the `.so` plus R files.
-- **Accepted precedent tops out around 7MB** (measured from CRAN's own
-  servers: `gifski` 6.9MB, `arcpbf` 1.8MB, `orbweaver` 1.1MB, `b64`
-  1.0MB). At ~12MB total our tarball is ~1.7x the largest known accepted
-  Rust package: above precedent, not above policy. Expect the incoming
-  size flag and a human reviewer reading `cran-comments.md`.
+- **Accepted precedent tops out around 12MB** (CRAN source tarballs,
+  measured from CRAN's own servers: `tok` 11.6MB (2026-11-05), `prqlr`
+  9.1MB (2026-11-05), `gifski` 6.9MB, `arcpbf` 1.8MB, `orbweaver` 1.1MB,
+  `b64` 1.0MB). At 35MB for the vendor tarball alone, ours is about 3x
+  the largest known accepted Rust package: well above precedent, still not
+  above any written limit. Expect the incoming size flag and a human
+  reviewer reading `cran-comments.md`.
 
-Strategy ladder, in order:
+### How other Rust packages handle the vendor tarball
 
-1. **Submit at current size** with a justification that leans on the
-   policy itself: vendoring is *required* by CRAN's offline rule, the
-   format is exactly what the Rust policy prescribes, and the tree is
-   already platform-filtered, TLS-slimmed, and content-stripped
-   (60MB -> 11.7MB).
-2. **If rejected on size: the policy's own hosted-bundle remedy** -- host
-   `vendor.tar.xz` at a qualifying long-term site (not GitHub; a
-   DOI-permanent archive such as Zenodo is the defensible choice) with
-   the sha256 embedded in the package sources, downloaded by `configure`
-   when absent, `cargo` fetch as the online fallback.
-3. **r-universe** as the distribution channel of last resort (the
-   `r-polars` route).
+Surveyed 2026-11-05: the 94 CRAN packages whose `SystemRequirements` name
+cargo or rustc, 88 of whose GitHub repositories could be cloned.
+
+| practice | repos | examples |
+|----------|-------|----------|
+| `vendor.tar.xz` committed to git, `vendor/` ignored | 61 | `b64`, `b32`, `h3o`, `tomledit` (extendr); `yaml12`, `automerge` (Posit); `tok` (mlverse); `zoomerjoin` |
+| tarball in `.gitignore`, made at release time | ~15 | `gifski`, `hellorust` (r-rust); `prqlr`; `tinyimg` |
+| tarball downloaded at install from a GitHub release, sha256 checked | 1 | `ggsql` (Posit) |
+| unpacked `vendor/` committed | 5 | `fozziejoin`, `scanr` |
+
+The committed tarballs are small: `b64` 0.7MB, `yaml12` 1.3MB, `h3o`
+4.5MB, `zoomerjoin` 6.0MB, `automerge` 6.1MB, `tok` 11.0MB. Every update
+of a committed tarball keeps a full copy in git history, which is cheap at
+that size but not at 35MB per dependency bump (GitHub also warns on files
+over 50MB and refuses files over 100MB). `rattlerthis` therefore stays in
+the second group. `ggsql`'s GitHub-release download was accepted by CRAN,
+but the Rust policy says GitHub is not reliable hosting, so it is not a
+pattern to copy.
+
+r-universe builds from git, with network access, so the tarball being in
+git or not makes no difference there: all ten packages checked
+(`gifski`, `hellorust`, `prqlr`, `tinyimg`, `ggsql`, `b64`, `h3o`,
+`yaml12`, `tok`, `zoomerjoin`) build on Windows x64 and Windows on ARM64.
+Without the tarball, `Makevars` lets cargo download the crates, as it
+does for development builds.
+
+### Releasing the vendored tarball (decided 2026-11-05)
+
+`src/rust/vendor.tar.xz` is a release artifact, not a source file. It is
+made with `just update-vendor` only at these points:
+
+- before every CRAN submission or update;
+- for every major release of `rattlerthis`.
+
+Between them, git holds `Cargo.toml` and `Cargo.lock` only. Development
+builds, CI and r-universe download the crates from crates.io, at the
+versions `Cargo.lock` pins.
+
+Each released tarball is also uploaded to Zenodo, as the long-term,
+trusted copy: one record, with a new Zenodo version (and DOI) for each
+release of the tarball. This meets the Rust policy's remedy for a bundle
+"too large to be included" (a long-term site under the maintainer's
+control, not GitHub), so the order of preference for a CRAN release is:
+
+1. **Bundle the tarball in the CRAN source package**, with the
+   justification in `cran-comments.md`: vendoring is required by CRAN's
+   offline rule, the format is the one the Rust policy prescribes, and the
+   tree is already platform-filtered, TLS-slimmed and content-stripped
+   (60MB unfiltered).
+2. **If CRAN refuses the size, download it from Zenodo** at install time,
+   with its sha256 embedded in the package sources (see "Checksum tooling"
+   below). The Zenodo copy exists from the first release on, so this
+   switch needs no new upload.
+3. **r-universe** publishes binaries in every case, including Windows on
+   ARM64, so users do not need Rust (not yet registered in
+   `luciorq.r-universe.dev`; see TODO.md).
+
+### Checksum tooling (planned, not built)
+
+Downloading from Zenodo is only acceptable with a checksum fixed in the
+package sources, and nothing does this yet. What the tooling needs to do:
+
+1. **Record each release.** `just update-vendor` (or a separate release
+   recipe) writes, next to the tarball, its sha256, its size in bytes,
+   the number of crates, and the sha256 of the `Cargo.lock` it was
+   vendored from. That ties a tarball to one lock file. A file committed to
+   git, for example `tools/vendor-release.dcf`, keeps one entry per
+   released tarball: package version, sha256, size, `Cargo.lock` sha256,
+   Zenodo record and file URL, DOI.
+2. **Hash the uploaded file, not a rebuilt one.** The tarball is not
+   reproducible yet: `xz` picks its thread count from the machine's memory
+   (the 2026-11-05 run printed "Reduced the number of threads from 4 to 3
+   to not exceed the memory usage limit"), and `tar` records file times,
+   owners and order. Two runs of the recipe on different machines can give
+   different bytes from the same `Cargo.lock`. Until the archive is made
+   reproducible (`tar --sort=name --mtime=... --owner=0 --group=0
+   --numeric-owner`, a fixed `xz` thread count and preset, and a check that
+   two runs give one hash), the recorded sha256 is the one of the file that
+   was uploaded.
+3. **Check the upload.** A `just verify-vendor` recipe downloads the file
+   from Zenodo and checks it against the recorded sha256 and size (Zenodo
+   also reports an MD5 per file, as a second check), and that its crates
+   match `Cargo.lock`: an offline build from the downloaded tree, as
+   `update-vendor` already does for the local one.
+4. **Use it at install time.** When `src/rust/vendor.tar.xz` is missing
+   and a recorded entry matches the package version, `tools/config.R`
+   downloads it from Zenodo and checks the sha256 before unpacking it.
+   On a mismatch it stops with an error and never uses the file. When the
+   download fails, the build falls back to cargo's own download, which
+   only works with network access (not on CRAN's machines, where the
+   error must say so). The sha256 needs base R's `tools::sha256sum()` (R
+   >= 4.5); `rattlerthis` supports R >= 4.3, so older R needs another way,
+   as condathis's checksum of the micromamba download does.
+5. **Credit the crates.** The Rust policy also requires the authorship and
+   copyright of every vendored crate in the package. `rextendr` has
+   `write_license_note()`, which writes a `LICENSE.note` for them; it has
+   to be regenerated with each released tarball.
 
 Not pursued (diminishing returns relative to the changes above):
 
@@ -509,6 +632,103 @@ would close it; IDs R-1 to R-42) belongs to the backend spec, which is not
 in the repository. Keep all three in step when a difference is closed or
 found: a parity test asserts each difference that can be observed on the
 test machines.
+
+## r-universe and WebAssembly
+
+Researched 2026-11-05, from r-universe's own build workflow and actions
+(`r-universe-org/workflows` `build.yml`, `r-universe-org/actions`
+`build-matrix` and `windows-prep` at `v12`), the docs at
+docs.r-universe.dev, and the pull requests Jeroen Ooms opened in 2026.
+
+### What r-universe builds
+
+- From git, the default branch unless `packages.json` sets `branch` (a
+  branch, a tag, or `"*release"`). It checks the repositories and the
+  registry for changes every hour, and rebuilds every package every 30
+  days. Builds have network access, so a missing `vendor.tar.xz` only
+  means that cargo downloads the crates.
+- For a package with compiled code: Linux and macOS, x86_64 and arm64;
+  Windows x64 for R devel, release and oldrel, and Windows on ARM64
+  (`windows-11-arm` runners) for devel and release; WebAssembly for R
+  release, always. There is no opt-in or opt-out per platform. Build
+  customisation is "overall not possible" (docs, 13.2).
+- For Rust on Windows ARM64, `windows-prep` runs `rustup target add
+  aarch64-pc-windows-gnullvm` and sets
+  `CARGO_BUILD_TARGET=aarch64-pc-windows-gnullvm`, the target that
+  `tools/config.R` picks there. On Windows x64 it installs no Rust target,
+  so the build uses the runner's Rust as it is (see "CI" for the
+  `zstd-sys` risk with the MSVC host). For WebAssembly, `rwasm` puts a
+  `cargo` shim first on `PATH` (r-wasm/rwasm #60, #63) that cross-compiles
+  every `cargo build` to `wasm32-unknown-emscripten`, with `-fPIC` for
+  embedded C code.
+- Checked on ten Rust packages (see "How other Rust packages handle the
+  vendor tarball"): all build on Windows x64 and Windows on ARM64.
+
+### The Windows on ARM64 pull requests
+
+From July to October 2026, Jeroen Ooms opened about 50 pull requests
+titled "Fix build on Windows ARM64" (two waves: 2026-08-01 and
+2026-10-11), to Rust packages (`b64`, `h3o`, `heck`, `zoomerjoin`,
+`tinyimg`, `prqlr`, `automerge`, `ggsql`, `salso`, `clarabel`, ...) and to
+C/C++ ones. Around them: rextendr #532 (the template), the
+`aarch64-pc-windows-gnullvm` target on GitHub's runner images
+(actions/runner-images #14488), and the `windows.binary.arm64` package
+type in pak and r-lib/actions. The Rust ones change the same three things:
+
+1. The Windows target triple is chosen from the R that builds (rextendr's
+   `.windows_target`, or a `tools/rustarch.R` outside the template):
+   `aarch64-pc-windows-gnullvm` on ARM64. `tools/config.R` here has the
+   same code.
+2. `extendr-api` 0.8.1 to 0.8.2 (`b64`, 2026-10-11), for the packages on
+   crates.io's extendr. Not needed here: the git pin is newer.
+3. A `windows-11-arm` job in CI. Here it is `.github/workflows/win-arm64.yaml`,
+   which passed on 2026-11-05 (run 41961267989).
+
+### WebAssembly: the package installs without the backend
+
+WebAssembly is the one r-universe platform this package cannot support,
+for two reasons:
+
+- **rattler does not compile for it.** `cargo check --release --target
+  wasm32-unknown-emscripten` (2026-11-05) stops in `mio`, under tokio:
+  "This wasm target is unsupported by mio. If using Tokio, disable the net
+  feature." rattler's HTTP stack (`reqwest`, `hyper`) needs tokio's `net`.
+  `native-tls` (OpenSSL) and the process and signal crates would come next.
+- **It could not run.** webR cannot start processes, so condathis cannot
+  run a command in an environment with any backend.
+
+Jeroen's wasm fixes (gifski #380, readxl #792) make the code compile, by
+gating what the emscripten target lacks. That is not possible here, so the
+package installs without its Rust library instead of failing to build:
+
+- At the top of `tools/config.R`, before every other check, an R whose
+  platform is `wasm32-unknown-emscripten` writes a `src/Makevars` with
+  `OBJECTS = wasm/init.o`. That compiles only `src/wasm/init.c`, which
+  registers no routines. No Rust toolchain is needed or checked. (R
+  compiles only the files at the top of `src/`, so other builds never
+  compile `src/wasm/init.c`.)
+- `.onLoad()` still registers the "rattler" backend, as condathis requires
+  of a backend package it knows: `new_backend_rattler()` returns
+  `new_backend_rattler_unsupported()` when `rattler_rust_available()` is
+  `FALSE`. That checks the Rust routine (`wrap__rt_job_poll`), not the
+  platform, so any build without Rust gets it, and a test can build one on
+  Linux.
+- That backend's `backend_available()` is `FALSE`, so `method = "auto"`
+  never picks it, even first in `condathis.backend_priority`. Its three
+  required functions keep the arguments of the real ones (which
+  `register_backend()` checks) and abort with `rattlerthis_rust_unavailable`
+  and `condathis_backend_unsupported`. `method = "rattler"` therefore fails
+  with condathis's error (`condathis_create_env_failed`, also
+  `condathis_backend_unsupported`), whose parent says the build has no Rust
+  library and names the platform.
+- `tests/testthat/test-rust-unavailable.R` tests the backend object, the
+  errors and the fallback of `"auto"`, and runs `tools/config.R` in a new R
+  process that reports the webR platform, with no cargo on `PATH`. The
+  whole path was also checked on Linux (2026-11-05): with that
+  `src/Makevars`, `R CMD INSTALL --no-configure` takes 2 seconds, and
+  condathis loads the package and behaves as above.
+- Not checked yet: a real webR build. r-universe will show it once the
+  package is registered (see TODO.md).
 
 ## CI
 

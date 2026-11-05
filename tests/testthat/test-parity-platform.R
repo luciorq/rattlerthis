@@ -356,7 +356,9 @@ test_that("the emulation fallback chooses the same platform on both backends", {
       return(list(
         subdir = "win-64",
         marker = "win-64",
-        message = "Using x64 emulation for win-64 packages."
+        # condathis shows the platform as a value (`{.val win-64}`), in
+        # quotes without colors.
+        message = "Using x64 emulation for \"win-64\" packages."
       ))
     }
     return(list(subdir = NA_character_, marker = NULL, message = NULL))

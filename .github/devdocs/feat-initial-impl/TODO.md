@@ -60,18 +60,56 @@ whether the gateway still emits duplicate records (below).
 
 ## Open
 
-- [ ] First run of `.github/workflows/win-arm64.yaml` on `windows-11-arm`:
-      the ARM64 DLL has only been cross-built and linked so far, never
-      loaded or tested natively.
-- [ ] First run of `.github/workflows/R-CMD-check.yaml`. Both need the
-      condathis ref of `Remotes` pushed (pin a SHA once it is).
+- [x] `.github/workflows/win-arm64.yaml` on `windows-11-arm`: the first
+      run (2026-11-05, run 41948564276) built, loaded and tested the ARM64
+      DLL natively, with 11 test failures and a failed DLL check step. With
+      the fixes of PR #2 (python 3.14 where conda-forge has no 3.12 for
+      win-arm64, the quoted platform in the emulation message, `cygpath -m`
+      for `llvm-objdump`), run 41961267989 passed: 0 failures, 0 errors,
+      2 skips, and the DLL check. The environment a failing pip step had
+      left behind under x64 emulation is gone with native python.
+- [x] First run of `.github/workflows/R-CMD-check.yaml`: passed on Linux,
+      macOS and Windows x64 (2026-11-05, run 41948564235). `Remotes` names
+      condathis's `main` branch; pin a SHA if `main` breaks it.
 - [ ] `R CMD check --as-cran` with tests. A local run on Linux
       (2026-10-28, release build, `--no-tests`) had no error; its WARNING
       (no `checkbashisms` script) and NOTEs (no network time, the
       conda-forge toolchain's `-march=nocona`) came from that machine.
-- [ ] `cran-comments.md`: justify the vendored tarball (31.8MB now, see
-      PLAN.md "Vendoring and CRAN size"); if refused, the policy's hosted
-      bundle with an embedded sha256 (not GitHub), then r-universe.
+- [ ] `cran-comments.md`: justify the vendored tarball (35.0MB on
+      2026-11-05, about 3x the largest accepted Rust package, `tok` at
+      11.6MB; see PLAN.md "Vendoring and CRAN size"). If refused, download
+      it from Zenodo with an embedded sha256 (PLAN.md "Releasing the
+      vendored tarball").
+- [ ] Vendored-tarball release tooling, before the first CRAN submission
+      (PLAN.md "Checksum tooling"): record sha256, size, crate count and
+      the `Cargo.lock` sha256 of each released tarball in a committed
+      file; a `just verify-vendor` recipe that checks the Zenodo copy;
+      a verified Zenodo download in `tools/config.R` when the tarball is
+      missing; ideally a reproducible archive (fixed `tar` metadata and
+      `xz` threads).
+- [ ] A Zenodo record for `vendor.tar.xz`, with one version per released
+      tarball (each CRAN submission or update, and each major release).
+- [ ] `LICENSE.note` for the authorship and copyright of the vendored
+      crates, as CRAN's Rust policy requires: `rextendr::write_license_note()`,
+      regenerated with each released tarball.
+- [ ] Register `rattlerthis` in `luciorq.r-universe.dev` (`packages.json`)
+      for binaries on every platform, including Windows on ARM64. Watch the
+      first builds (PLAN.md "r-universe and WebAssembly"): Windows x64,
+      where r-universe sets no Rust target and, with the MSVC host,
+      `zstd-sys` needs a C compiler that Rtools45 does not have; and
+      WebAssembly, the first real run of the build without Rust.
+- [x] WebAssembly fails gracefully (2026-11-05): `tools/config.R` builds
+      only `src/wasm/init.c` on webR, and the package registers a backend
+      that is never available and aborts with `rattlerthis_rust_unavailable`
+      (`test-rust-unavailable.R`). rattler does not compile for
+      `wasm32-unknown-emscripten` (`mio`, through tokio's `net`).
+- [ ] Move the `extendr-api` git pin (`74afddc`) to the first extendr
+      release that contains #1101 (the `write__make_<module>_wrappers` C
+      entry point), and then to crates.io. Not in 0.9.0 or 0.8.2
+      (re-checked 2026-11-05).
+- [x] rextendr is a development tool only (2026-11-05): `Config/Needs/dev`
+      names the CRAN `rextendr`, and `Config/rextendr/version` is 0.5.0
+      (0.5.0.9000 does not exist, and made rextendr warn).
 - [ ] `cargo tree --duplicates` (or `cargo-deny`) as a CI step, so
       re-vendoring does not regrow version drift.
 - [ ] No CI step detects a stale `vendor.tar.xz` after a
