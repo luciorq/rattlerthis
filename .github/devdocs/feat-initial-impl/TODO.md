@@ -92,12 +92,26 @@ whether the gateway still emits duplicate records (below).
 - [ ] `LICENSE.note` for the authorship and copyright of the vendored
       crates, as CRAN's Rust policy requires: `rextendr::write_license_note()`,
       regenerated with each released tarball.
-- [ ] Register `rattlerthis` in `luciorq.r-universe.dev` (`packages.json`)
-      for binaries on every platform, including Windows on ARM64. Watch the
-      first builds (PLAN.md "r-universe and WebAssembly"): Windows x64,
-      where r-universe sets no Rust target and, with the MSVC host,
-      `zstd-sys` needs a C compiler that Rtools45 does not have; and
-      WebAssembly, the first real run of the build without Rust.
+- [x] Register `rattlerthis` in `luciorq.r-universe.dev` (`packages.json`)
+      for binaries on every platform, including Windows on ARM64. The
+      first builds (PLAN.md "r-universe builds"): on 2026-11-05 (run
+      41963069103, `8699e99`) every platform failed to load the package,
+      because r-universe installed condathis 0.1.4 from CRAN and
+      rattlerthis needs >= 0.2.0. The next build (run 41971824155,
+      `447318e`) failed only on the five Windows targets, in
+      `test-parity-childenv.R` (paths such as `c://r//bin`): the condathis
+      bug fixed in condathis `52e241f`. Its rebuild as a reverse dependency
+      of condathis (2026-11-06, run 42297699059) passed 13 of 14 binaries,
+      Windows x64 included (no `zstd-sys` problem), and WebAssembly built
+      without Rust.
+- [ ] macOS x86_64, R 4.6.2 on r-universe (2026-11-06, run 42297699059,
+      job 128170186393): R segfaulted (`address 0x0`) after 10 minutes of
+      `tests/testthat.R`, inside `fs::dir_ls()` called from
+      `backend_has_env_dirs("micromamba")`. The same commit passed on macOS
+      x86_64 R 4.5.3, macOS arm64 and every other platform. Not yet known
+      if it repeats: only an r-universe admin can re-run the job, so the
+      next build (a push to `main`) shows it. If it repeats, reproduce on
+      an Intel Mac (omicron is arm64), for example under ASan.
 - [x] WebAssembly fails gracefully (2026-11-05): `tools/config.R` builds
       only `src/wasm/init.c` on webR, and the package registers a backend
       that is never available and aborts with `rattlerthis_rust_unavailable`

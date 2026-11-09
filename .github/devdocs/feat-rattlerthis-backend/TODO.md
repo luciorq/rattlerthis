@@ -45,7 +45,9 @@ Status of `rattlerthis` as condathis's backend. See `PLAN.md` here and
 - [x] `Remotes: luciorq/condathis` in `DESCRIPTION`: the condathis tree
       with contract v2 (`feat-strict-defaults`) is merged into condathis's
       `main`. CI installs condathis from that branch.
-- [ ] Before condathis's next CRAN release, once rattlerthis is public:
-      condathis declares `Enhances: rattlerthis` plus
-      `Additional_repositories` (spec decision Q22).
+- [x] Dropped 2026-11-08: condathis does not declare `Enhances:
+      rattlerthis` or `Additional_repositories` (spec decision Q22). The
+      CRAN release of condathis is independent of rattlerthis, and its
+      `DESCRIPTION` does not name it (condathis's post-0.2.0 PLAN.md,
+      item 15).
 - [ ] The follow-ups outside this package listed in `PLAN.md`.

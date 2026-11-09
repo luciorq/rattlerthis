@@ -727,8 +727,28 @@ package installs without its Rust library instead of failing to build:
   whole path was also checked on Linux (2026-11-05): with that
   `src/Makevars`, `R CMD INSTALL --no-configure` takes 2 seconds, and
   condathis loads the package and behaves as above.
-- Not checked yet: a real webR build. r-universe will show it once the
-  package is registered (see TODO.md).
+- A real webR build passed on r-universe (2026-11-06, run 42297699059,
+  R 4.6.0): `tools/config.R` printed that it builds without the Rust
+  library, `emcc` compiled and linked only `src/wasm/init.c`, and the
+  install finished. r-universe runs no tests on WebAssembly.
+
+### r-universe builds
+
+- 2026-11-05, run 41963069103 (`8699e99`): every platform failed at
+  "testing if installed package can be loaded", because r-universe
+  installed condathis 0.1.4 from CRAN and `.onLoad()` needs condathis
+  >= 0.2.0. Later builds found condathis 0.2.0 in `luciorq.r-universe.dev`.
+- 2026-11-05, run 41971824155 (`447318e`): all Windows targets failed in
+  `test-parity-childenv.R` (R-5, R-14). condathis doubled the slashes in
+  Windows `PATH` entries (`c://r//bin`), so the micromamba and rattler
+  child environments differed. Fixed in condathis `52e241f`.
+- 2026-11-06, run 42297699059 (`447318e`, rebuilt as a reverse dependency
+  of condathis): 13 of 14 binaries passed, Windows x64 and ARM64
+  included. macOS x86_64 on R 4.6.2 segfaulted in the tests (see
+  TODO.md).
+- Re-running a job needs admin rights on `r-universe/luciorq`, which the
+  owner of the package does not have. A push to `main` starts a new build
+  within the hour.
 
 ## CI
 
