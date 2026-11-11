@@ -53,7 +53,7 @@ use rattler::install::{
 use rattler_cache::package_cache::PackageCache;
 use rattler_conda_types::{
     package::DistArchiveType, Channel, GenericVirtualPackage, MatchSpec, Matches, PackageName,
-    PackageRecord, ParseStrictness, Platform, PrefixRecord, RepoDataRecord,
+    PackageRecord, ParseStrictness, Subdir, PrefixRecord, RepoDataRecord,
 };
 use rattler_repodata_gateway::fetch::{CacheAction, FetchRepoDataError};
 use rattler_repodata_gateway::{ChannelConfig, Gateway, GatewayError, RepoData, SourceConfig};
@@ -218,8 +218,8 @@ pub fn python_pins(installed: &[PrefixRecord], requested: &[MatchSpec]) -> RtRes
     if find_record(installed, "python-freethreading").is_some() {
         if let Some(abi) = find_record(installed, "python_abi") {
             let pr = &abi.repodata_record.package_record;
-            if let Some(pos) = pr.build.find('_') {
-                let abi_tag = &pr.build[pos..];
+            if let Some(pos) = pr.build.as_str().find('_') {
+                let abi_tag = &pr.build.as_str()[pos..];
                 let v = pr.version.to_string();
                 let vparts: Vec<&str> = v.split('.').collect();
                 let version_pin = if vparts.len() >= 2 {
@@ -276,7 +276,7 @@ pub fn file_pins(prefix: &Path) -> RtResult<Vec<MatchSpec>> {
 /// Virtual packages of the target platform, as libmamba builds them
 /// (`vpkgs.rs`), with `CONDA_OVERRIDE_*` honored.
 pub async fn detect_virtual_packages(
-    platform: Platform,
+    platform: Subdir,
     cache_dir: PathBuf,
 ) -> RtResult<Vec<GenericVirtualPackage>> {
     tokio::task::spawn_blocking(move || crate::vpkgs::detect(platform, Some(&cache_dir)))
@@ -371,13 +371,13 @@ fn unpatched_pip(solved: Vec<RepoDataRecord>, repodata: &[RepoData]) -> Vec<Repo
         .collect()
 }
 
-fn query_platforms(platform: Platform) -> Vec<Platform> {
+fn query_platforms(platform: Subdir) -> Vec<Subdir> {
     // The gateway fetches exactly the subdirs it is given; `noarch` is not
     // implied.
-    if platform == Platform::NoArch {
+    if platform == Subdir::NoArch {
         vec![platform]
     } else {
-        vec![platform, Platform::NoArch]
+        vec![platform, Subdir::NoArch]
     }
 }
 
@@ -460,7 +460,7 @@ fn flat_cache_is_fresh(repodata_cache_dir: &Path, subdir_url: &url::Url, now: st
 /// rule: a query then reads it from the cache without asking the server, as
 /// micromamba does. A channel with a subdir that is not cached (or that is
 /// served as sharded repodata) keeps rattler's own rules.
-fn fresh_flat_channels(repodata_cache_dir: &Path, channels: &[Channel], platforms: &[Platform]) -> Vec<(url::Url, bool)> {
+fn fresh_flat_channels(repodata_cache_dir: &Path, channels: &[Channel], platforms: &[Subdir]) -> Vec<(url::Url, bool)> {
     let now = std::time::SystemTime::now();
     channels
         .iter()
@@ -480,7 +480,7 @@ fn gateway(
     cache: &PackageCache,
     mode: RepodataCache,
     channels: &[Channel],
-    platforms: &[Platform],
+    platforms: &[Subdir],
 ) -> Gateway {
     let builder = Gateway::builder()
         .with_client(client.clone())
@@ -641,7 +641,7 @@ async fn fetch_repodata(
     ctx: &JobCtx,
     source: &RepodataSource<'_>,
     channels: Vec<Channel>,
-    platform: Platform,
+    platform: Subdir,
     specs: &[MatchSpec],
 ) -> RtResult<Vec<RepoData>> {
     // One gateway per mode for the whole fetch: a gateway keeps the subdirs
@@ -1039,10 +1039,13 @@ async fn fetch_one(
                 key,
                 move |destination| {
                     let path = path.clone();
+                    // The cache records the archive's sha256 with the entry,
+                    // and reuses an entry only for a request with the same
+                    // hash (or none).
                     async move {
                         crate::pkgfile::extract_with_modes(&path, &destination)
                             .await
-                            .map(|_| ())
+                            .map(|result| Some(result.sha256))
                     }
                 },
                 None,
@@ -1082,7 +1085,7 @@ async fn fetch_one(
                                 let _ = tokio::fs::remove_dir_all(&destination).await;
                                 Err(mismatch(hex(&want), hex(&result.md5)))
                             }
-                            _ => Ok(()),
+                            _ => Ok(Some(result.sha256)),
                         }
                     }
                 },
@@ -1309,7 +1312,7 @@ pub(crate) fn row(op: &'static str, record: &RepoDataRecord) -> TxRow {
         op,
         name: pr.name.as_normalized().to_string(),
         version: pr.version.to_string(),
-        build: pr.build.clone(),
+        build: pr.build.to_string(),
         channel: record_channel_display(record).0,
         subdir: pr.subdir.clone(),
     }
@@ -1432,7 +1435,7 @@ pub(crate) fn ensure_link_allowed() -> RtResult<()> {
 
 /// What an install needs once its arguments are checked.
 struct Plan {
-    platform: Platform,
+    platform: Subdir,
     channel_priority: ChannelPriority,
     requested: Vec<MatchSpec>,
     restrictions: Vec<ChannelRestriction>,
@@ -1699,7 +1702,7 @@ async fn install_wheels<'a>(
     wheel_records: &'a [RepoDataRecord],
     conda_records: &[RepoDataRecord],
     prefix: &Path,
-    platform: Platform,
+    platform: Subdir,
     existing: &[PrefixRecord],
     net_settings: &crate::netenv::NetSettings,
 ) -> RtResult<Vec<&'a RepoDataRecord>> {
@@ -1726,7 +1729,7 @@ async fn install_wheels<'a>(
         (
             r.package_record.name.as_normalized().to_string(),
             r.package_record.version.to_string(),
-            r.package_record.build.clone(),
+            r.package_record.build.to_string(),
         )
     };
     let existing_keys: HashSet<(String, String, String)> = existing
@@ -1780,7 +1783,7 @@ pub fn solve_check_job(input: SolveCheckInput) -> Job {
 async fn solve_check(
     ctx: &JobCtx,
     input: SolveCheckInput,
-    platform: Platform,
+    platform: Subdir,
     channel_priority: ChannelPriority,
 ) -> RtResult<()> {
     let mut specs = parse_specs(&input.specs)?;

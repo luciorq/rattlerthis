@@ -23,7 +23,7 @@ use rattler_conda_types::{
     package::EntryPoint,
     prefix::Prefix,
     prefix_record::{PathType, PathsEntry},
-    Platform, PrefixRecord, RepoDataRecord,
+    Subdir, PrefixRecord, RepoDataRecord,
 };
 use rattler_digest::{compute_bytes_digest, Sha256, Sha256Hash};
 
@@ -34,7 +34,7 @@ pub async fn install_wheel(
     record: &RepoDataRecord,
     prefix: &Path,
     python_info: &PythonInfo,
-    platform: Platform,
+    platform: Subdir,
 ) -> RtResult<PrefixRecord> {
     let bytes = client
         .get(record.url.clone())
@@ -81,7 +81,7 @@ fn extract_wheel(
     record: &RepoDataRecord,
     prefix: &Path,
     python_info: &PythonInfo,
-    platform: Platform,
+    platform: Subdir,
 ) -> RtResult<Vec<PathsEntry>> {
     let name = record.package_record.name.as_normalized().to_string();
 
@@ -105,7 +105,14 @@ fn extract_wheel(
             continue;
         }
 
-        let archive_path = entry.name().to_string();
+        // zip 9 returns an error for a name that is not valid UTF-8.
+        let archive_path = entry
+            .name()
+            .map_err(|source| RtError::WheelArchive {
+                name: name.clone(),
+                source,
+            })?
+            .to_string();
         if archive_path.ends_with(".dist-info/entry_points.txt") {
             let mut text = String::new();
             entry.read_to_string(&mut text)?;
@@ -214,7 +221,7 @@ fn write_entry_point(
     target_prefix: &str,
     entry_point: &EntryPoint,
     python_info: &PythonInfo,
-    platform: Platform,
+    platform: Subdir,
 ) -> RtResult<Vec<PathsEntry>> {
     if platform.is_windows() {
         let script_rel = python_info

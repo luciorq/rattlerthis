@@ -6,9 +6,12 @@ Status and roadmap of `rattlerthis`, condathis's `"rattler"` backend. See
 Dependency currency: the rattler-family crates (`rattler`,
 `rattler_conda_types`, `rattler_solve`, `rattler_repodata_gateway`,
 `rattler_shell`, `rattler_virtual_packages`, `rattler_cache`) ship from one
-monorepo in lockstep and move fast. Last bumped 2026-08-28 (`rattler`
-0.48.6, `rattler_conda_types` 0.52.1, `rattler_solve` 9.0.5,
-`rattler_repodata_gateway` 0.33.2, `rattler_virtual_packages` 6.0.0). Bump
+monorepo in lockstep and move fast. Last bumped 2026-11-10 (`rattler`
+0.55.5, `rattler_conda_types` 0.58.1, `rattler_solve` 12.0.3,
+`rattler_repodata_gateway` 0.38.1, `rattler_virtual_packages` 8.1.5): the
+release train of 2026-11-02, pinned with `=` in `src/rust/Cargo.toml`.
+The next train (rattler 0.55.6 and 0.55.7) needs Rust 1.95 through
+`windows-registry` 0.100 and `parking_lot` 0.13, above CRAN's floor. Bump
 them together: mismatched versions can resolve to two copies of one crate
 and fail to compile. After every bump run `just update-vendor` and
 `just check-msrv` (MSRV 1.88, CRAN's lowest flavour is 1.91.1), and check
@@ -26,6 +29,14 @@ whether the gateway still emits duplicate records (below).
   `.recursive(true)` (byte-identical copies of a record in one set).
 - **2026-07 to 2026-10, condathis adapter** for the first backend
   contract: see `.github/devdocs/feat-rattlerthis-backend/TODO.md`.
+- **2026-11-10, rattler 0.55.5 family** (from 0.48.6): `Platform` is now
+  `Subdir` (`NATIVE_SUBDIR`, resolved at compile time); build strings are
+  `BuildString` (built unchecked, as micromamba takes any); the package
+  cache's fetch closures return the archive's sha256, which the cache
+  records and requires of a request that carries one, so entries from
+  older versions are fetched once more; `StringMatcher` has `Any`,
+  `Prefix` and `Suffix` (the build globs of `conda-meta/history`); `zip`
+  9 for wheels.
 - **2026-08-12, dev rextendr / extendr toolchain**: `document.c` instead of
   a second `cargo run`, `extendr-api` pinned to a git rev,
   `@WINDOWS_TARGET@`, quoted paths, wrapper regeneration only for
@@ -130,7 +141,11 @@ whether the gateway still emits duplicate records (below).
       `Cargo.toml` / `Cargo.lock` change.
 - [ ] Report upstream to `conda/rattler`, and drop `dedup_repodata()` once
       the gateway stops emitting duplicate records (still present in
-      `rattler_repodata_gateway` 0.33.2). Rider: ask for feature gates on
+      `rattler_repodata_gateway` 0.33.2). With 0.38.1 (2026-11-10), three
+      solves through condathis (`python=3.12 pip`, `r-base r-tidyverse`,
+      `samtools bcftools`; conda-forge and bioconda) dropped no record in
+      any of their 12 sets. Not proof that the bug is gone, so the
+      function stays. Rider: ask for feature gates on
       `rattler_menuinst` and `rattler_pty` (about 0.27MB compressed).
 - [ ] Channels other than HTTP(S) and local directories (S3, OCI, git) are
       not wired up; proxy, custom CA and channel-token settings of

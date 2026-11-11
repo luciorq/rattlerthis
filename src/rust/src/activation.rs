@@ -48,7 +48,7 @@ use std::process::Stdio;
 use std::str::FromStr;
 use std::time::Duration;
 
-use rattler_conda_types::Platform;
+use rattler_conda_types::Subdir;
 use rattler_shell::activation::{ActivationVariables, Activator, PathModificationBehavior};
 use rattler_shell::shell::{Bash, BashFlavor, CmdExe, Shell, ShellScript};
 
@@ -58,17 +58,27 @@ use crate::job::{spawn_job, Job, JobCtx, JobOutput, Phase};
 /// Marks the two environment dumps in the shell's output.
 const SEPARATOR: &str = "____RATTLERTHIS_ENV_SEPARATOR____";
 
-pub fn parse_platform(platform: Option<&str>) -> RtResult<Platform> {
+/// The conda subdir of the platform this library was built for. Resolved at
+/// compile time: a target without a conda subdir fails to build here
+/// instead of failing at run time. (WebAssembly, the one such r-universe
+/// target, builds the package without the Rust library; see
+/// `tools/config.R`.)
+pub const NATIVE_SUBDIR: Subdir = match Subdir::current() {
+    Some(subdir) => subdir,
+    None => panic!("rattlerthis: the build target has no conda subdir"),
+};
+
+pub fn parse_platform(platform: Option<&str>) -> RtResult<Subdir> {
     match platform {
-        None => Ok(Platform::current()),
-        Some(s) => Platform::from_str(s).map_err(|_| RtError::InvalidPlatform {
+        None => Ok(NATIVE_SUBDIR),
+        Some(s) => Subdir::from_str(s).map_err(|_| RtError::InvalidPlatform {
             platform: s.to_string(),
         }),
     }
 }
 
 /// Splits `PATH` the way the target shell does.
-fn path_entries(path: &str, platform: Platform) -> Vec<PathBuf> {
+fn path_entries(path: &str, platform: Subdir) -> Vec<PathBuf> {
     let sep = if platform.is_windows() { ';' } else { ':' };
     path.split(sep)
         .filter(|p| !p.is_empty())
@@ -105,7 +115,7 @@ fn env_get<'a>(env: &'a [(String, String)], name: &str) -> Option<&'a str> {
 }
 
 /// `true` when `bash` is found on the `PATH` of `env`.
-pub fn bash_on_path(env: &[(String, String)], platform: Platform) -> bool {
+pub fn bash_on_path(env: &[(String, String)], platform: Subdir) -> bool {
     let Some(path) = env_get(env, "PATH") else {
         return false;
     };
@@ -165,7 +175,7 @@ async fn activation_env(
 async fn run_with_shell<T: Shell + Clone + Send + 'static>(
     ctx: &JobCtx,
     shell: T,
-    platform: Platform,
+    platform: Subdir,
     input: ActivationInput,
 ) -> RtResult<Vec<(String, Option<String>)>> {
     let activation_error = |e: &dyn std::fmt::Display| RtError::Activation(e.to_string());
@@ -522,7 +532,7 @@ mod tests {
             .filter(|(k, _)| k != "PATH")
             .chain(std::iter::once(("PATH".into(), bin.to_string_lossy().to_string())))
             .collect();
-        assert!(!bash_on_path(&env, Platform::current()));
+        assert!(!bash_on_path(&env, NATIVE_SUBDIR));
         let prefix = make_prefix(Some("export RT_TEST_SH=1\n"));
         let out = run(prefix.path(), env).unwrap();
         assert_eq!(get(&out, "RT_TEST_SH"), Some("1"));

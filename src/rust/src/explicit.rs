@@ -53,7 +53,7 @@ use std::sync::{Arc, Mutex};
 use rattler::install::{Installer, Transaction, TransactionOperation};
 use rattler_cache::package_cache::{CacheKey, PackageCache};
 use rattler_conda_types::package::{DistArchiveIdentifier, IndexJson, PackageFile};
-use rattler_conda_types::{PackageName, PackageRecord, Platform, PrefixRecord, RepoDataRecord, VersionWithSource};
+use rattler_conda_types::{PackageName, PackageRecord, Subdir, PrefixRecord, RepoDataRecord, VersionWithSource};
 use rattler_digest::{Md5, Md5Hash, Sha256, Sha256Hash};
 use rattler_networking::LazyClient;
 use url::Url;
@@ -319,7 +319,7 @@ pub fn parse_explicit_entry(line: &str) -> RtResult<ExplicitEntry> {
     })?;
     let platform = segments
         .last()
-        .filter(|s| Platform::from_str(s).is_ok())
+        .filter(|s| Subdir::from_str(s).is_ok())
         .cloned();
     let mut channel_url = url.clone();
     channel_url.set_fragment(None);
@@ -402,7 +402,8 @@ fn stub_record(entry: &ExplicitEntry, md5: Option<Md5Hash>, sha256: Option<Sha25
         .map_err(|e| RtError::EnvFile(format!("invalid package name in {}: {e}", entry.file_name)))?;
     let version = VersionWithSource::from_str(&entry.version)
         .map_err(|e| RtError::EnvFile(format!("invalid version in {}: {e}", entry.file_name)))?;
-    let mut record = PackageRecord::new(name, version, entry.build.clone());
+    // Not validated against CEP 26: micromamba takes any build string.
+    let mut record = PackageRecord::new(name, version, rattler_conda_types::package::BuildString::new_unchecked(entry.build.clone()));
     record.md5 = md5;
     record.sha256 = sha256;
     Ok(record)
@@ -535,10 +536,11 @@ async fn fetch_file(cache: &PackageCache, entry: &ExplicitEntry) -> RtResult<Fet
             CacheKey::from(&stub),
             move |destination| {
                 let path = path.clone();
+                // The cache records the archive's sha256 with the entry.
                 async move {
                     crate::pkgfile::extract_with_modes(&path, &destination)
                         .await
-                        .map(|_| ())
+                        .map(|result| Some(result.sha256))
                 }
             },
             None,
@@ -596,7 +598,7 @@ async fn fetch_http(
                         return Err(DownloadError::Mismatch(text));
                     }
                     *downloaded.lock().unwrap() = Some(hashes);
-                    Ok::<(), DownloadError>(())
+                    Ok::<_, DownloadError>(Some(hashes.sha256))
                 }
             }
         };
@@ -792,7 +794,7 @@ async fn install_explicit(ctx: &JobCtx, input: ExplicitInput) -> RtResult<Instal
 async fn install_explicit_locked(
     ctx: &JobCtx,
     input: &ExplicitInput,
-    platform: Platform,
+    platform: Subdir,
     entries: Vec<ExplicitEntry>,
     prefix: PathBuf,
     before: Vec<PrefixRecord>,

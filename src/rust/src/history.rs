@@ -182,6 +182,11 @@ pub fn update_spec_string(raw: &str) -> String {
     let version = version.filter(|v| !matches!(v, VersionSpec::Any));
     let build = match build {
         Some(StringMatcher::Exact(b)) => Some((b, false)),
+        // rattler parses `*`, `0*` and `*_0` into their own variants, not
+        // into `Glob`; libmamba writes them as the globs they are.
+        Some(StringMatcher::Any) => None,
+        Some(StringMatcher::Prefix(p)) => Some((format!("{p}*"), true)),
+        Some(StringMatcher::Suffix(s)) => Some((format!("*{s}"), true)),
         Some(StringMatcher::Glob(g)) if g.as_str() == "*" => None,
         Some(StringMatcher::Glob(g)) => Some((g.as_str().to_string(), true)),
         Some(_) => return raw.to_string(),
@@ -318,7 +323,7 @@ pub(crate) mod tests {
         let mut pr = PackageRecord::new(
             PackageName::new_unchecked(name),
             Version::from_str(version).unwrap(),
-            build.to_string(),
+            rattler_conda_types::package::BuildString::new_unchecked(build),
         );
         pr.subdir = subdir.to_string();
         let file = format!("{name}-{version}-{build}.tar.bz2");
@@ -396,6 +401,7 @@ pub(crate) mod tests {
             ("foo *", "foo"),
             ("foo[build=0]", "foo=*=0"),
             ("foo[build='0*']", "foo[build=\"0*\"]"),
+            ("foo[build='*_0']", "foo[build=\"*_0\"]"),
             ("foo=1.0=0*", "foo[version=\"=1.0\",build=\"0*\"]"),
             ("foo[version='>=1']", "foo>=1"),
             ("foo >=0.5,<2,!=1.5", "foo[version=\">=0.5,(<2,!=1.5)\"]"),

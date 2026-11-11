@@ -477,7 +477,7 @@ mod tests {
         use rattler_conda_types::{PackageRecord, RepoDataRecord, Version};
         use std::str::FromStr;
         let record = |name: &str, channel: &str| {
-            let mut pr = PackageRecord::new(PackageName::new_unchecked(name), Version::from_str("1").unwrap(), "0".to_string());
+            let mut pr = PackageRecord::new(PackageName::new_unchecked(name), Version::from_str("1").unwrap(), rattler_conda_types::package::BuildString::new_unchecked("0"));
             pr.subdir = "noarch".to_string();
             RepoDataRecord {
                 package_record: pr,
@@ -505,7 +505,7 @@ mod tests {
             let mut pr = PackageRecord::new(
                 PackageName::new_unchecked("foo"),
                 Version::from_str("1").unwrap(),
-                "0".to_string(),
+                rattler_conda_types::package::BuildString::new_unchecked("0"),
             );
             pr.subdir = "noarch".to_string();
             RepoDataRecord {

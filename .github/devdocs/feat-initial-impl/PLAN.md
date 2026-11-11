@@ -441,6 +441,7 @@ Size history, all figures measured (compressed = `vendor.tar.xz`;
 | pass 4 (content stripping)              | 421    | **11.7MB** | 150MB    |
 | per-platform merge (2026-10-22)         | 421    | 31.8MB     | 571MB    |
 | same recipe, re-run (2026-11-05)        | 421    | 35.0MB     | not measured |
+| rattler 0.55.5 bump (2026-11-10)        | 459    | 32.3MB     | 577MB    |
 
 ### Where this stands with CRAN policy
 

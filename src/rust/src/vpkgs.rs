@@ -29,7 +29,7 @@
 use std::path::Path;
 use std::str::FromStr;
 
-use rattler_conda_types::{GenericVirtualPackage, PackageName, Platform, Version};
+use rattler_conda_types::{GenericVirtualPackage, PackageName, Subdir, Version};
 use rattler_virtual_packages::{Cuda, LibC, Linux, Osx, Windows};
 
 use crate::error::{RtError, RtResult};
@@ -51,7 +51,7 @@ fn make(name: &str, version: &str, build: &str) -> RtResult<GenericVirtualPackag
     Ok(GenericVirtualPackage {
         name: PackageName::new_unchecked(name),
         version: parsed,
-        build_string: build.to_string(),
+        build_string: rattler_conda_types::package::BuildString::new_unchecked(build),
     })
 }
 
@@ -107,7 +107,7 @@ pub fn x86_64_level() -> &'static str {
 
 /// The virtual packages of `platform`, as libmamba builds them (see the
 /// module documentation). `cache_dir` caches the CUDA detection.
-pub fn detect(platform: Platform, cache_dir: Option<&Path>) -> RtResult<Vec<GenericVirtualPackage>> {
+pub fn detect(platform: Subdir, cache_dir: Option<&Path>) -> RtResult<Vec<GenericVirtualPackage>> {
     let mut out = Vec::new();
     if let Some((os, arch)) = platform.as_str().split_once('-') {
         match os {
@@ -152,12 +152,12 @@ pub fn detect(platform: Platform, cache_dir: Option<&Path>) -> RtResult<Vec<Gene
 mod tests {
     use super::*;
 
-    fn names(platform: Platform) -> Vec<(String, String, String)> {
+    fn names(platform: Subdir) -> Vec<(String, String, String)> {
         detect(platform, None)
             .unwrap()
             .into_iter()
             .filter(|p| p.name.as_normalized() != "__cuda")
-            .map(|p| (p.name.as_normalized().to_string(), p.version.to_string(), p.build_string))
+            .map(|p| (p.name.as_normalized().to_string(), p.version.to_string(), p.build_string.to_string()))
             .collect()
     }
 
@@ -173,29 +173,29 @@ mod tests {
 
     #[test]
     fn only_the_target_os_family_gets_os_packages() {
-        let win = names(Platform::Win64);
+        let win = names(Subdir::Win64);
         assert!(find(&win, "__win").is_some());
         assert!(find(&win, "__unix").is_none() && find(&win, "__linux").is_none() && find(&win, "__osx").is_none());
-        let osx = names(Platform::OsxArm64);
+        let osx = names(Subdir::OsxArm64);
         assert!(find(&osx, "__osx").is_some() && find(&osx, "__unix").is_some());
         assert!(find(&osx, "__win").is_none() && find(&osx, "__glibc").is_none());
-        let linux = names(Platform::LinuxAarch64);
+        let linux = names(Subdir::LinuxAarch64);
         assert!(find(&linux, "__linux").is_some() && find(&linux, "__unix").is_some());
         assert!(find(&linux, "__win").is_none() && find(&linux, "__osx").is_none());
-        assert!(names(Platform::NoArch).is_empty());
+        assert!(names(Subdir::NoArch).is_empty());
     }
 
     #[test]
     fn other_operating_systems_get_version_0() {
         if std::env::var_os("CONDA_OVERRIDE_WIN").is_none() && !cfg!(windows) {
-            assert_eq!(find(&names(Platform::Win64), "__win"), Some(("0".into(), "0".into())));
+            assert_eq!(find(&names(Subdir::Win64), "__win"), Some(("0".into(), "0".into())));
         }
         if std::env::var_os("CONDA_OVERRIDE_OSX").is_none() && !cfg!(target_os = "macos") {
-            assert_eq!(find(&names(Platform::Osx64), "__osx"), Some(("0".into(), "0".into())));
+            assert_eq!(find(&names(Subdir::Osx64), "__osx"), Some(("0".into(), "0".into())));
         }
         if std::env::var_os("CONDA_OVERRIDE_LINUX").is_none() && !cfg!(target_os = "linux") {
-            assert_eq!(find(&names(Platform::Linux64), "__linux"), Some(("0".into(), "0".into())));
-            assert!(find(&names(Platform::Linux64), "__glibc").is_none());
+            assert_eq!(find(&names(Subdir::Linux64), "__linux"), Some(("0".into(), "0".into())));
+            assert!(find(&names(Subdir::Linux64), "__glibc").is_none());
         }
     }
 
@@ -204,15 +204,15 @@ mod tests {
         if std::env::var_os("CONDA_OVERRIDE_ARCHSPEC").is_some() {
             return;
         }
-        let arch = |p: Platform| find(&names(p), "__archspec").unwrap();
-        assert_eq!(arch(Platform::OsxArm64), ("1".into(), "arm64".into()));
-        assert_eq!(arch(Platform::WinArm64), ("1".into(), "arm64".into()));
-        assert_eq!(arch(Platform::LinuxAarch64), ("1".into(), "aarch64".into()));
-        assert_eq!(arch(Platform::LinuxPpc64le), ("1".into(), "ppc64le".into()));
-        assert_eq!(arch(Platform::Linux32), ("1".into(), "x86".into()));
-        let level = arch(Platform::Linux64).1;
+        let arch = |p: Subdir| find(&names(p), "__archspec").unwrap();
+        assert_eq!(arch(Subdir::OsxArm64), ("1".into(), "arm64".into()));
+        assert_eq!(arch(Subdir::WinArm64), ("1".into(), "arm64".into()));
+        assert_eq!(arch(Subdir::LinuxAarch64), ("1".into(), "aarch64".into()));
+        assert_eq!(arch(Subdir::LinuxPpc64le), ("1".into(), "ppc64le".into()));
+        assert_eq!(arch(Subdir::Linux32), ("1".into(), "x86".into()));
+        let level = arch(Subdir::Linux64).1;
         assert_eq!(level, x86_64_level());
-        assert_eq!(arch(Platform::Win64).1, level);
+        assert_eq!(arch(Subdir::Win64).1, level);
         if cfg!(target_arch = "x86_64") {
             assert!(level.starts_with("x86_64"), "{level}");
         } else {

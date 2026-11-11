@@ -58,14 +58,23 @@ libc = '0.2'
 # is already a de facto requirement for the R ecosystem (the `curl` and
 # `openssl` CRAN packages need it too) and is present on CRAN's build
 # machines. See PLAN.md "Vendoring and CRAN size" / TODO.md.
-rattler = { version = '0.48', default-features = false, features = ['native-tls'] }
-rattler_conda_types = { version = '0.52' }
-rattler_digest = { version = '1', default-features = false }
-rattler_solve = { version = '9', default-features = false, features = ['resolvo'] }
-rattler_repodata_gateway = { version = '0.33', default-features = false, features = ['gateway', 'native-tls'] }
-rattler_shell = { version = '0.27' }
-rattler_virtual_packages = { version = '6' }
-rattler_cache = { version = '0.10', default-features = false, features = ['native-tls'] }
+#
+# The rattler family is pinned to exact versions of one release train
+# (2026-11-02: rattler 0.55.5), the newest whose dependency graph builds on
+# CRAN's lowest Rust (1.91.1; see `just check-msrv`). The next train needs
+# Rust 1.95: rattler 0.55.6 requires `rattler_menuinst` 0.4.9 and with it
+# `windows-registry` 0.100, and 0.55.7 also `parking_lot` 0.13. The crates
+# pin one another with `=`, so they move together: when CRAN's floor
+# allows, bump every pin below to one newer train and rerun
+# `just check-msrv` and `just update-vendor`.
+rattler = { version = '=0.55.5', default-features = false, features = ['native-tls'] }
+rattler_conda_types = { version = '=0.58.1' }
+rattler_digest = { version = '=2.1.0', default-features = false }
+rattler_solve = { version = '=12.0.3', default-features = false, features = ['resolvo'] }
+rattler_repodata_gateway = { version = '=0.38.1', default-features = false, features = ['gateway', 'native-tls'] }
+rattler_shell = { version = '=0.29.7' }
+rattler_virtual_packages = { version = '=8.1.5' }
+rattler_cache = { version = '=0.12.1', default-features = false, features = ['native-tls'] }
 url = '2'
 
 # One HTTP client per job (`net.rs`): libmamba's 10 s connect timeout and its
@@ -79,7 +88,7 @@ async-trait = '0.1'
 http = '1'
 # `LazyClient`: the HTTP client is built on first use only, so work on local
 # channels never initializes the TLS library (see `net.rs`, fork safety).
-rattler_networking = { version = '0.30', default-features = false }
+rattler_networking = { version = '=0.34.6', default-features = false }
 # The credentials micromamba reads (`netenv.rs`): base64 passwords of
 # `~/.mamba/auth/authentication.json` and `Authorization: Basic` headers.
 # Already in the lock through rattler. reqwest's `socks` feature (above)
@@ -107,7 +116,7 @@ tar = '0.4'
 serde = { version = '1', features = ['derive'] }
 serde_yaml = '0.9'
 serde_json = '1'
-rattler_package_streaming = { version = '0.27', default-features = false, features = ['reqwest'] }
+rattler_package_streaming = { version = '=0.28.3', default-features = false, features = ['reqwest'] }
 
 # Wheel installation (the `conda-pypi` channel serves raw `.whl` files that
 # rattler's own Installer/PackageCache do not yet know how to fetch or link;
@@ -115,7 +124,7 @@ rattler_package_streaming = { version = '0.27', default-features = false, featur
 # default: it is not part of the minimal solve/install/activate/run surface
 # and its `zip` stack is a large addressable chunk of the vendored
 # dependency tree. See PLAN.md "Vendoring and CRAN size".
-zip = { version = '8', default-features = false, features = ['deflate'], optional = true }
+zip = { version = '9', default-features = false, features = ['deflate'], optional = true }
 
 # The identity (volume serial number and file index) of a lock file on
 # Windows, so a lock can tell whether its file was removed while it waited
@@ -133,7 +142,7 @@ wheels = ['dep:zip']
 # are in the lock through rattler_package_streaming.
 bzip2 = '0.6'
 zstd = '0.13'
-zip = { version = '8', default-features = false }
+zip = { version = '9', default-features = false }
 # (The tiny `.tar.bz2` packages of the local test channels are built with
 # `rattler_package_streaming`, and their repodata with `serde_json`, both
 # regular dependencies above.)

@@ -6,6 +6,7 @@
 //! `repodata.json` for the subdir of this platform, so tests need no
 //! network.
 
+use crate::activation::NATIVE_SUBDIR;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,7 +14,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rattler_conda_types::compression_level::CompressionLevel;
-use rattler_conda_types::Platform;
 use rattler_digest::{compute_bytes_digest, Md5, Sha256};
 use serde_json::json;
 
@@ -150,7 +150,7 @@ pub fn make_channel(root: &Path, name: &str, pkgs: &[TestPkg]) -> PathBuf {
         records.insert(pkg.file_name(), build_package(pkg, &noarch));
     }
     write_repodata(&noarch, "noarch", records);
-    let native = Platform::current().to_string();
+    let native = NATIVE_SUBDIR.to_string();
     write_repodata(&dir.join(&native), &native, BTreeMap::new());
     dir
 }

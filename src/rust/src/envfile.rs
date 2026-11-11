@@ -60,11 +60,12 @@
 //! condathis turns into `condathis_backend_unsupported`: wheels, source
 //! archives and VCS URLs among the conda packages of a lock file.
 
+use crate::activation::NATIVE_SUBDIR;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
-use rattler_conda_types::Platform;
+use rattler_conda_types::Subdir;
 use serde::de::{self, Deserializer, EnumAccess, IgnoredAny, MapAccess, SeqAccess, VariantAccess, Visitor};
 use serde::Deserialize;
 
@@ -218,12 +219,12 @@ fn env_file_error(path: &str, msg: impl fmt::Display) -> RtError {
 /// Reads and parses an environment file. `platform` selects the packages of
 /// a lock file; YAML selectors always follow the platform this library was
 /// built for (see the module docs). Nothing is downloaded or installed.
-pub fn read_env_file(path: &Path, platform: Platform) -> RtResult<EnvFile> {
+pub fn read_env_file(path: &Path, platform: Subdir) -> RtResult<EnvFile> {
     let shown = path.to_string_lossy().to_string();
     let kind = classify(&shown);
     let bytes = std::fs::read(path).map_err(|e| env_file_error(&shown, format!("cannot read it: {e}")))?;
     let mut file = match kind {
-        EnvFileKind::Yaml => read_yaml(&yaml_text(&bytes), &shown, Platform::current(), &env_lookup),
+        EnvFileKind::Yaml => read_yaml(&yaml_text(&bytes), &shown, NATIVE_SUBDIR, &env_lookup),
         EnvFileKind::CondaLock => read_conda_lock(&yaml_text(&bytes), &shown, platform),
         EnvFileKind::MambajsLock => read_mambajs_lock(&bytes, &shown, platform, &crate::channels::channel_config()),
         _ => read_text(&plain_text(&bytes, &shown)?, &shown),
@@ -679,7 +680,7 @@ fn first_document<T: for<'de> Deserialize<'de>>(text: &str) -> Result<Option<T>,
 
 /// libmamba's `eval_selector()`: `sel(win)`, `sel(unix)`, `sel(osx)` or
 /// `sel(linux)`, true when it names `platform`'s family.
-pub fn eval_selector(selector: &str, platform: Platform) -> Result<bool, String> {
+pub fn eval_selector(selector: &str, platform: Subdir) -> Result<bool, String> {
     if !(selector.starts_with("sel(") && selector.ends_with(')')) || selector.len() < 5 {
         return Err("Couldn't parse selector. Needs to start with sel( and end with )".to_string());
     }
@@ -769,7 +770,7 @@ fn find_defined_var(s: &str, lookup: &dyn Fn(&str) -> Option<String>) -> Option<
 fn read_yaml(
     text: &str,
     path: &str,
-    selector_platform: Platform,
+    selector_platform: Subdir,
     lookup: &dyn Fn(&str) -> Option<String>,
 ) -> RtResult<EnvFile> {
     let mut out = EnvFile::new(EnvFileKind::Yaml);
@@ -995,7 +996,7 @@ fn required(field: Field<RawText>, what: &str, path: &str) -> RtResult<String> {
         .ok_or_else(|| env_file_error(path, format!("a package has no '{what}'")))
 }
 
-fn read_conda_lock(text: &str, path: &str, platform: Platform) -> RtResult<EnvFile> {
+fn read_conda_lock(text: &str, path: &str, platform: Subdir) -> RtResult<EnvFile> {
     let doc: LockDoc = first_document(text)
         .map_err(|e| env_file_error(path, format!("invalid lock file: {e}")))?
         .unwrap_or_default();
@@ -1244,7 +1245,7 @@ fn mambajs_channel_url(
 fn read_mambajs_lock(
     bytes: &[u8],
     path: &str,
-    platform: Platform,
+    platform: Subdir,
     cfg: &rattler_conda_types::ChannelConfig,
 ) -> RtResult<EnvFile> {
     let doc: serde_json::Value = serde_json::from_slice(bytes).map_err(|e| json_error(path, e))?;

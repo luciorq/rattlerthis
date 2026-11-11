@@ -1,4 +1,4 @@
-# rattlerthis
+# rattlerthis <a href="https://github.com/luciorq/rattlerthis"><img src="man/figures/logo.svg" align="right" height="139" alt="rattlerthis repository" /></a>
 
 <!-- badges: start -->
 <!-- badges: end -->

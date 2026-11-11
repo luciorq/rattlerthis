@@ -8,10 +8,10 @@ fn no_env(_: &str) -> Option<String> {
 }
 
 fn yaml(text: &str) -> RtResult<EnvFile> {
-    read_yaml(text, "env.yml", Platform::Linux64, &no_env)
+    read_yaml(text, "env.yml", Subdir::Linux64, &no_env)
 }
 
-fn yaml_on(text: &str, platform: Platform) -> RtResult<EnvFile> {
+fn yaml_on(text: &str, platform: Subdir) -> RtResult<EnvFile> {
     read_yaml(text, "env.yml", platform, &no_env)
 }
 
@@ -50,15 +50,15 @@ fn yaml_basic_fields() {
 fn yaml_selectors_and_ignored_items() {
     // micromamba y1: nested lists, nulls and other keys are ignored.
     let text = "dependencies:\n  - foo\n  - sel(unix): baz\n  - {sel(osx): bar}\n  - [nested]\n  - ~\n  - other: x\n";
-    assert_eq!(yaml_on(text, Platform::Linux64).unwrap().specs, vec!["foo", "baz"]);
-    assert_eq!(yaml_on(text, Platform::OsxArm64).unwrap().specs, vec!["foo", "baz", "bar"]);
-    assert_eq!(yaml_on(text, Platform::Win64).unwrap().specs, vec!["foo"]);
+    assert_eq!(yaml_on(text, Subdir::Linux64).unwrap().specs, vec!["foo", "baz"]);
+    assert_eq!(yaml_on(text, Subdir::OsxArm64).unwrap().specs, vec!["foo", "baz", "bar"]);
+    assert_eq!(yaml_on(text, Subdir::Win64).unwrap().specs, vec!["foo"]);
     let text = "dependencies:\n  - sel(win): baz\n  - sel(linux): foo\n  - sel(osx): bar\n";
-    assert_eq!(yaml_on(text, Platform::Win64).unwrap().specs, vec!["baz"]);
-    assert_eq!(yaml_on(text, Platform::WinArm64).unwrap().specs, vec!["baz"]);
-    assert_eq!(yaml_on(text, Platform::LinuxAarch64).unwrap().specs, vec!["foo"]);
-    assert_eq!(yaml_on(text, Platform::Osx64).unwrap().specs, vec!["bar"]);
-    assert!(yaml_on(text, Platform::EmscriptenWasm32).unwrap().specs.is_empty());
+    assert_eq!(yaml_on(text, Subdir::Win64).unwrap().specs, vec!["baz"]);
+    assert_eq!(yaml_on(text, Subdir::WinArm64).unwrap().specs, vec!["baz"]);
+    assert_eq!(yaml_on(text, Subdir::LinuxAarch64).unwrap().specs, vec!["foo"]);
+    assert_eq!(yaml_on(text, Subdir::Osx64).unwrap().specs, vec!["bar"]);
+    assert!(yaml_on(text, Subdir::EmscriptenWasm32).unwrap().specs.is_empty());
 }
 
 #[test]
@@ -74,8 +74,8 @@ fn yaml_selector_errors() {
         yaml("dependencies:\n  - sel(win): [foo, baz]\n  - baz\n").unwrap().specs,
         vec!["baz"]
     );
-    assert!(eval_selector("sel()", Platform::Linux64).is_err());
-    assert!(eval_selector("sel(linux", Platform::Linux64).is_err());
+    assert!(eval_selector("sel()", Subdir::Linux64).is_err());
+    assert!(eval_selector("sel(linux", Subdir::Linux64).is_err());
 }
 
 #[test]
@@ -222,7 +222,7 @@ fn expandvars_follows_libmamba() {
     let f = read_yaml(
         "channels:\n  - ${CH}/chC\n  - $NOPE/x\ndependencies:\n  - baz\n",
         "e.yml",
-        Platform::Linux64,
+        Subdir::Linux64,
         &lookup,
     )
     .unwrap();
@@ -310,7 +310,7 @@ fn conda_lock_selects_main_conda_packages_for_the_platform() {
             ),
         ],
     );
-    let f = read_conda_lock(&text, "x-lock.yml", Platform::Linux64).unwrap();
+    let f = read_conda_lock(&text, "x-lock.yml", Subdir::Linux64).unwrap();
     assert_eq!(f.kind, EnvFileKind::CondaLock);
     assert_eq!(f.platforms, vec!["linux-64", "osx-arm64"]);
     // sha256 when the lock has it, else md5; file order.
@@ -322,7 +322,7 @@ fn conda_lock_selects_main_conda_packages_for_the_platform() {
     // The pip packages of the platform (category main) are one pip step,
     // without dependencies (micromamba l1).
     assert!(f.pip.is_empty());
-    let f = read_conda_lock(&text, "x-lock.yml", Platform::OsxArm64).unwrap();
+    let f = read_conda_lock(&text, "x-lock.yml", Subdir::OsxArm64).unwrap();
     assert_eq!(
         pip_groups(&f),
         vec![(
@@ -331,10 +331,10 @@ fn conda_lock_selects_main_conda_packages_for_the_platform() {
         )]
     );
     // No packages for the platform: an empty environment, with a note.
-    let f = read_conda_lock(&text, "x-lock.yml", Platform::Win64).unwrap();
+    let f = read_conda_lock(&text, "x-lock.yml", Subdir::Win64).unwrap();
     assert_eq!(f.urls, vec![format!("{}#{MD5}", u("anyarch"))]);
     let only = lock_text("1", &[lock_pkg("baz", "conda", "osx-64", "main", &both(), &u("baz"))]);
-    let f = read_conda_lock(&only, "x-lock.yml", Platform::Linux64).unwrap();
+    let f = read_conda_lock(&only, "x-lock.yml", Subdir::Linux64).unwrap();
     assert!(f.urls.is_empty());
     assert_eq!(f.problems.len(), 1, "{:?}", f.problems);
     // A pip package without a platform or for noarch is installed by
@@ -348,7 +348,7 @@ fn conda_lock_selects_main_conda_packages_for_the_platform() {
             lock_pkg("six", "pip", "linux-64", "main", &format!("sha256: {SHA}"), "https://f/six-1.0-py3-none-any.whl"),
         ],
     );
-    let f = read_conda_lock(&noplat, "x-lock.yml", Platform::Linux64).unwrap();
+    let f = read_conda_lock(&noplat, "x-lock.yml", Subdir::Linux64).unwrap();
     assert_eq!(
         pip_groups(&f),
         vec![(
@@ -366,18 +366,18 @@ fn conda_lock_selects_main_conda_packages_for_the_platform() {
 fn conda_lock_errors() {
     let u = "file:///c/chC/noarch/baz-1.0-0.tar.bz2";
     let ok = lock_pkg("baz", "conda", "linux-64", "main", &both(), u);
-    let err = read_conda_lock(&lock_text("2", std::slice::from_ref(&ok)), "x-lock.yml", Platform::Linux64).unwrap_err();
+    let err = read_conda_lock(&lock_text("2", std::slice::from_ref(&ok)), "x-lock.yml", Subdir::Linux64).unwrap_err();
     assert!(err.to_string().contains("unknown lock file version '2'"), "{err}");
     assert_eq!(kind_of(&err), "env_file");
     let no_hash = ok.replace(&format!("  hash: {{{}}}\n", both()), "");
-    assert!(read_conda_lock(&lock_text("1", &[no_hash]), "x-lock.yml", Platform::Linux64).is_err());
+    assert!(read_conda_lock(&lock_text("1", &[no_hash]), "x-lock.yml", Subdir::Linux64).is_err());
     let empty_hash = ok.replace(&both(), "");
-    let err = read_conda_lock(&lock_text("1", &[empty_hash]), "x-lock.yml", Platform::Linux64).unwrap_err();
+    let err = read_conda_lock(&lock_text("1", &[empty_hash]), "x-lock.yml", Subdir::Linux64).unwrap_err();
     assert!(err.to_string().contains("'hash.md5' or 'hash.sha256'"), "{err}");
     let bad_url = ok.replace(u, "file:///c/chC/noarch/baz-1.0-0");
-    assert!(read_conda_lock(&lock_text("1", &[bad_url]), "x-lock.yml", Platform::Linux64).is_err());
+    assert!(read_conda_lock(&lock_text("1", &[bad_url]), "x-lock.yml", Subdir::Linux64).is_err());
     let no_name = ok.replace("- name: baz\n  version", "- version");
-    assert!(read_conda_lock(&lock_text("1", &[no_name]), "x-lock.yml", Platform::Linux64).is_err());
+    assert!(read_conda_lock(&lock_text("1", &[no_name]), "x-lock.yml", Subdir::Linux64).is_err());
     let text = lock_text("1", &[ok]);
     for (from, to) in [
         ("  platforms: [linux-64, osx-arm64]\n", ""),
@@ -386,18 +386,18 @@ fn conda_lock_errors() {
         (", used_env_vars: []", ""),
     ] {
         assert!(
-            read_conda_lock(&text.replace(from, to), "x-lock.yml", Platform::Linux64).is_err(),
+            read_conda_lock(&text.replace(from, to), "x-lock.yml", Subdir::Linux64).is_err(),
             "{from}"
         );
     }
-    assert!(read_conda_lock("", "x-lock.yml", Platform::Linux64).is_err());
+    assert!(read_conda_lock("", "x-lock.yml", Subdir::Linux64).is_err());
 }
 
 #[test]
 fn conda_lock_hashes_are_checked_as_micromamba_checks_them() {
     let u = "file:///c/chC/noarch/baz-1.0-0.tar.bz2";
     let lock = |hash: &str| lock_text("1", &[lock_pkg("baz", "conda", "linux-64", "main", hash, u)]);
-    let read = |hash: &str| read_conda_lock(&lock(hash), "x-lock.yml", Platform::Linux64);
+    let read = |hash: &str| read_conda_lock(&lock(hash), "x-lock.yml", Subdir::Linux64);
     // micromamba hjunk, htrunc, hjunkmd5, hmd5junk, upshalock, upmd5lock:
     // "tarball has incorrect SHA256/MD5".
     for hash in [
@@ -424,13 +424,13 @@ fn conda_lock_hashes_are_checked_as_micromamba_checks_them() {
             lock_pkg("mac", "conda", "osx-arm64", "main", "md5: 'x'", "file:///c/chC/noarch/mac-1.0-0.tar.bz2"),
         ],
     );
-    assert!(read_conda_lock(&other, "x-lock.yml", Platform::Linux64).is_ok());
+    assert!(read_conda_lock(&other, "x-lock.yml", Subdir::Linux64).is_ok());
     // A wheel or source archive among the conda packages is unsupported.
     let whl = lock_text(
         "1",
         &[lock_pkg("six", "conda", "linux-64", "main", &format!("md5: {MD5}"), "file:///c/chC/noarch/six-1.0-py3-none-any.whl")],
     );
-    assert_eq!(kind_of(&read_conda_lock(&whl, "x-lock.yml", Platform::Linux64).unwrap_err()), "unsupported");
+    assert_eq!(kind_of(&read_conda_lock(&whl, "x-lock.yml", Subdir::Linux64).unwrap_err()), "unsupported");
 }
 
 #[test]
@@ -463,7 +463,7 @@ fn files_are_decoded_as_micromamba_decodes_them() {
         ("bom32le.yml", bom32le),
         ("le32.yml", utf32le(text)),
     ] {
-        let f = read_env_file(&write(name, &bytes), Platform::Linux64).unwrap();
+        let f = read_env_file(&write(name, &bytes), Subdir::Linux64).unwrap();
         assert_eq!(f.name.as_deref(), Some("myenv"), "{name}");
         assert_eq!(f.channels, vec!["chA"], "{name}");
         assert_eq!(f.specs, vec!["foo", "baz"], "{name}");
@@ -471,28 +471,28 @@ fn files_are_decoded_as_micromamba_decodes_them() {
     }
     // A conda-lock file with a byte order mark.
     let lock = lock_text("1", &[lock_pkg("baz", "conda", "linux-64", "main", &both(), "file:///c/chC/noarch/baz-1.0-0.tar.bz2")]);
-    let f = read_env_file(&write("b-lock.yml", &[&[0xEF, 0xBB, 0xBF][..], lock.as_bytes()].concat()), Platform::Linux64).unwrap();
+    let f = read_env_file(&write("b-lock.yml", &[&[0xEF, 0xBB, 0xBF][..], lock.as_bytes()].concat()), Subdir::Linux64).unwrap();
     assert_eq!(f.urls.len(), 1);
     // Text files keep a byte order mark in the first line, as micromamba
     // (the spec parser drops it; micromamba bomplain); one before
     // `@EXPLICIT` makes the file a spec list in both (bomexplicit).
-    let f = read_env_file(&write("p.txt", &[&[0xEF, 0xBB, 0xBF][..], b"foo\nbaz\n"].concat()), Platform::Linux64).unwrap();
+    let f = read_env_file(&write("p.txt", &[&[0xEF, 0xBB, 0xBF][..], b"foo\nbaz\n"].concat()), Subdir::Linux64).unwrap();
     assert_eq!(f.specs, vec!["\u{feff}foo", "baz"]);
-    let f = read_env_file(&write("x.txt", &[&[0xEF, 0xBB, 0xBF][..], b"@EXPLICIT\nfile:///c/noarch/foo-1.0-0.tar.bz2\n"].concat()), Platform::Linux64).unwrap();
+    let f = read_env_file(&write("x.txt", &[&[0xEF, 0xBB, 0xBF][..], b"@EXPLICIT\nfile:///c/noarch/foo-1.0-0.tar.bz2\n"].concat()), Subdir::Linux64).unwrap();
     assert_eq!(f.kind, EnvFileKind::Plain);
     // UTF-16 text files (micromamba u16txt cannot use them either).
-    let err = read_env_file(&write("u.txt", &[&[0xFF, 0xFE][..], &utf16("foo\n", false)].concat()), Platform::Linux64).unwrap_err();
+    let err = read_env_file(&write("u.txt", &[&[0xFF, 0xFE][..], &utf16("foo\n", false)].concat()), Subdir::Linux64).unwrap_err();
     assert_eq!(kind_of(&err), "env_file");
     assert!(err.to_string().contains("UTF-16"), "{err}");
     // A NUL escape in YAML (micromamba ynul cuts the spec at it).
-    let err = read_env_file(&write("n.yml", b"dependencies:\n  - \"foo\\0x\"\n"), Platform::Linux64).unwrap_err();
+    let err = read_env_file(&write("n.yml", b"dependencies:\n  - \"foo\\0x\"\n"), Subdir::Linux64).unwrap_err();
     assert_eq!(kind_of(&err), "env_file");
     assert!(err.to_string().contains("NUL") && !err.to_string().contains('\0'), "{err}");
-    let err = read_env_file(&write("n2.yml", b"name: \"a\\0b\"\n"), Platform::Linux64).unwrap_err();
+    let err = read_env_file(&write("n2.yml", b"name: \"a\\0b\"\n"), Subdir::Linux64).unwrap_err();
     assert!(err.r_message().is_ascii() && !err.r_message().contains('\0'), "{err}");
 }
 
-fn mambajs(platform: Platform, text: &str) -> RtResult<EnvFile> {
+fn mambajs(platform: Subdir, text: &str) -> RtResult<EnvFile> {
     read_mambajs_lock(text.as_bytes(), "x.json", platform, &crate::channels::channel_config())
 }
 
@@ -530,7 +530,7 @@ fn mambajs_lock_files_follow_libmamba() {
          \"registry\": \"pypi\", \"hash\": {{\"sha256\": \"{SHA}\"}}}}, \
          \"attrs-1.0-py3-none-any.whl\": {{\"name\": \"attrs\", \"version\": \"1.0\", \"url\": \"https://p/attrs.whl\", \"registry\": \"pypi\"}}"
     );
-    let f = mambajs(Platform::Linux64, &mambajs_text(&packages, &pip)).unwrap();
+    let f = mambajs(Subdir::Linux64, &mambajs_text(&packages, &pip)).unwrap();
     assert_eq!(f.kind, EnvFileKind::MambajsLock);
     assert_eq!(f.kind.name(), "mambajs_lock");
     assert_eq!(f.platforms, vec!["linux-64"]);
@@ -555,11 +555,11 @@ fn mambajs_lock_files_follow_libmamba() {
     assert!(f.problems.is_empty());
     // The file's `platform` does not select: another target gets noarch
     // and its own subdir.
-    let f = mambajs(Platform::OsxArm64, &mambajs_text(&packages, "")).unwrap();
+    let f = mambajs(Subdir::OsxArm64, &mambajs_text(&packages, "")).unwrap();
     assert_eq!(f.urls.len(), 3);
     assert!(f.urls.iter().any(|u| u.ends_with("/osx-arm64/mac-1.0-0.tar.bz2")), "{:?}", f.urls);
     assert!(f.pip.is_empty());
-    let f = mambajs(Platform::Win64, &mambajs_text(&mambajs_pkg("mac-1.0-0.tar.bz2", "osx-arm64", "cA", ""), "")).unwrap();
+    let f = mambajs(Subdir::Win64, &mambajs_text(&mambajs_pkg("mac-1.0-0.tar.bz2", "osx-arm64", "cA", ""), "")).unwrap();
     assert!(f.urls.is_empty());
     assert_eq!(f.problems.len(), 1, "{:?}", f.problems);
 }
@@ -567,7 +567,7 @@ fn mambajs_lock_files_follow_libmamba() {
 #[test]
 fn mambajs_lock_errors() {
     let ok = mambajs_pkg("foo-1.0-0.tar.bz2", "noarch", "cA", "");
-    let err_of = |text: &str| mambajs(Platform::Linux64, text).unwrap_err();
+    let err_of = |text: &str| mambajs(Subdir::Linux64, text).unwrap_err();
     // micromamba m2 to m5: no pipPackages, an empty hash, version 2.0.0.
     let no_pip = mambajs_text(&ok, "").replace(", \"pipPackages\": {}", "");
     assert_eq!(kind_of(&err_of(&no_pip)), "env_file");
@@ -605,7 +605,7 @@ fn pip_steps_run_in_the_directory_of_the_file() {
     std::fs::create_dir(&sub).unwrap();
     let yml = sub.join("env.yml");
     std::fs::write(&yml, "dependencies:\n  - pip:\n    - six\n").unwrap();
-    let f = read_env_file(&yml, Platform::Linux64).unwrap();
+    let f = read_env_file(&yml, Subdir::Linux64).unwrap();
     assert_eq!(f.pip.len(), 1);
     assert_eq!(std::path::Path::new(&f.pip[0].cwd), sub.as_path());
     // A relative path is made absolute against the working directory, as
@@ -615,10 +615,10 @@ fn pip_steps_run_in_the_directory_of_the_file() {
     assert_eq!(std::path::PathBuf::from(file_dir(rel).unwrap()), want);
     let json = sub.join("env.json");
     std::fs::write(&json, mambajs_text("", "\"x.whl\": {\"name\": \"x\", \"version\": \"1\", \"url\": \"https://p/x.whl\", \"registry\": \"pypi\"}")).unwrap();
-    let f = read_env_file(&json, Platform::Linux64).unwrap();
+    let f = read_env_file(&json, Subdir::Linux64).unwrap();
     assert_eq!(f.kind, EnvFileKind::MambajsLock);
     assert_eq!(std::path::Path::new(&f.pip[0].cwd), sub.as_path());
-    let err = read_env_file(&dir.path().join("missing.yml"), Platform::Linux64).unwrap_err();
+    let err = read_env_file(&dir.path().join("missing.yml"), Subdir::Linux64).unwrap_err();
     assert_eq!(kind_of(&err), "env_file");
 }
 
@@ -630,13 +630,13 @@ fn read_env_file_dispatches_on_the_name() {
         std::fs::write(&p, text).unwrap();
         p
     };
-    let f = read_env_file(&write("e.yml", "dependencies:\n  - sel(win): baz\n  - sel(unix): foo\n"), Platform::Win64).unwrap();
+    let f = read_env_file(&write("e.yml", "dependencies:\n  - sel(win): baz\n  - sel(unix): foo\n"), Subdir::Win64).unwrap();
     // Selectors follow this library's platform, not the one asked for.
     let want = if cfg!(windows) { "baz" } else { "foo" };
     assert_eq!(f.specs, vec![want]);
-    let f = read_env_file(&write("e.txt", "foo\n"), Platform::Linux64).unwrap();
+    let f = read_env_file(&write("e.txt", "foo\n"), Subdir::Linux64).unwrap();
     assert_eq!(f.kind, EnvFileKind::Plain);
-    let f = read_env_file(&write("e2.txt", "@EXPLICIT\n"), Platform::Linux64).unwrap();
+    let f = read_env_file(&write("e2.txt", "@EXPLICIT\n"), Subdir::Linux64).unwrap();
     assert_eq!(f.kind, EnvFileKind::Explicit);
 }
 

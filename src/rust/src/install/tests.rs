@@ -1,5 +1,6 @@
 //! Install, solve-check, pins, lock and cancel tests on local channels.
 
+use crate::activation::NATIVE_SUBDIR;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -321,7 +322,7 @@ fn channel_priority_grid_matches_micromamba() {
 fn solve_check_true_false_na() {
     let f = Fixture::new();
     let a = vec![f.chan("chA")];
-    let native = Platform::current().to_string();
+    let native = NATIVE_SUBDIR.to_string();
     assert_eq!(f.check(&["foo"], &a, "strict", &native).unwrap(), Some(true));
     assert_eq!(f.check(&["foo"], &a, "strict", "noarch").unwrap(), Some(true));
     // No candidates is "does not solve", as micromamba's solver_problems.
@@ -407,7 +408,7 @@ fn multichannel_specs_take_only_the_member_channels() {
         .lock()
         .unwrap()
         .push(("rt-multi-a".into(), vec![f.chan_url("chA")]));
-    let native = Platform::current().to_string();
+    let native = NATIVE_SUBDIR.to_string();
     // chB first and its foo newer: flexible priority still takes chA's.
     let prefix = f.prefix("multi");
     let out = f.install(&prefix, &["rt-multi-a::foo"], &[f.chan("chB")], "flexible").unwrap();
@@ -520,7 +521,7 @@ fn python_minor_version_is_pinned_like_libmamba() {
 #[test]
 fn pip_is_added_like_libmamba() {
     let f = python_fixture();
-    let native = Platform::current().to_string();
+    let native = NATIVE_SUBDIR.to_string();
     let nopip = vec![f.chan("nopip")];
     // Requesting python requests pip: unsolvable without pip.
     assert_eq!(f.check(&["python"], &nopip, "strict", &native).unwrap(), Some(false));
@@ -546,7 +547,7 @@ fn pip_is_added_like_libmamba() {
 #[test]
 fn pip_brings_python_like_libmamba() {
     let f = python_fixture();
-    let native = Platform::current().to_string();
+    let native = NATIVE_SUBDIR.to_string();
     // libmamba makes python a prerequisite of every pip record of a subdir:
     // requesting pip installs python too, also when pip's record does not
     // depend on it.
@@ -710,7 +711,7 @@ fn an_install_succeeds_while_another_gateway_reads_the_cached_repodata() {
     let read = runtime
         .block_on(
             first
-                .query(vec![channel], query_platforms(Platform::current()), vec![spec])
+                .query(vec![channel], query_platforms(NATIVE_SUBDIR), vec![spec])
                 .recursive(true)
                 .execute(),
         )
@@ -737,12 +738,12 @@ fn channel_metadata_without_cache_headers_is_reused_for_an_hour() {
     // The cache files rattler wrote are those this module checks.
     let cache = f.root.join("repodata_cache");
     let channel = Channel::from_url(url::Url::parse(&format!("{chan}/")).unwrap());
-    for platform in query_platforms(Platform::current()) {
+    for platform in query_platforms(NATIVE_SUBDIR) {
         let key = repodata_cache_key(&channel.platform_url(platform));
         assert!(cache.join(format!("{key}.info.json")).is_file(), "{key} for {platform}");
     }
     assert_eq!(
-        fresh_flat_channels(&cache, std::slice::from_ref(&channel), &query_platforms(Platform::current())),
+        fresh_flat_channels(&cache, std::slice::from_ref(&channel), &query_platforms(NATIVE_SUBDIR)),
         vec![(url::Url::clone(channel.base_url.url()), true)]
     );
     f.install(&f.prefix("ttl2"), &["foo"], std::slice::from_ref(&chan), "strict").unwrap();
@@ -849,7 +850,7 @@ fn spec_text_is_cleaned_as_libmamba_cleans_it() {
         let err = f.install(&p, &["\u{feff}foo", "baz"], &ch, "strict").unwrap_err();
         assert!(err.starts_with("[rattlerthis:solve]"), "{err}");
         assert!(!p.exists());
-        let platform = Platform::current().to_string();
+        let platform = NATIVE_SUBDIR.to_string();
         assert_eq!(f.check(&["\u{feff}foo"], &ch, "strict", &platform).unwrap(), Some(false));
         f.install(&p, &["foo", "baz"], &ch, "strict").unwrap();
     } else {
@@ -908,7 +909,7 @@ fn url_specs_are_recorded_as_micromamba_records_them() {
         let err = f.install(&p, &["foo", &spec], &ch, "strict").unwrap_err();
         assert!(err.starts_with("[rattlerthis:solve]"), "{err}");
         assert!(!p.exists());
-        let platform = Platform::current().to_string();
+        let platform = NATIVE_SUBDIR.to_string();
         assert_eq!(f.check(&[spec.as_str()], &ch, "strict", &platform).unwrap(), Some(false));
     }
 }
@@ -957,7 +958,7 @@ fn link_scripts_are_skipped_and_reported() {
         .iter()
         .map(|(p, s)| (p.as_str(), *s))
         .collect();
-    if Platform::current().is_windows() {
+    if NATIVE_SUBDIR.is_windows() {
         assert_eq!(kinds, vec![("plink", "post-link")]);
     } else {
         assert_eq!(kinds, vec![("plink", "pre-link"), ("plink", "post-link")]);
@@ -970,7 +971,7 @@ fn link_scripts_are_skipped_and_reported() {
     // An upgrade: pre-unlink of the old record, then the new one's scripts.
     let out = f.install(&p, &["plink=2.0"], &ch, "strict").unwrap();
     let kinds: Vec<&str> = out.link_scripts_skipped.iter().map(|(_, s)| *s).collect();
-    if Platform::current().is_windows() {
+    if NATIVE_SUBDIR.is_windows() {
         assert_eq!(kinds, vec!["post-link"]);
     } else {
         assert_eq!(kinds, vec!["pre-unlink", "pre-link", "post-link"]);

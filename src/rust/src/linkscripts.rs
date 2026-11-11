@@ -68,7 +68,7 @@ mod tests {
         PackageRecord::new(
             PackageName::new_unchecked(name),
             Version::from_str("1.0").unwrap(),
-            "0".into(),
+            rattler_conda_types::package::BuildString::new_unchecked("0"),
         )
     }
 

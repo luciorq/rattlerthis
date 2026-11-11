@@ -11,6 +11,7 @@
 //! option; it honors the generic conda variables rattler itself reads (the
 //! `CONDA_OVERRIDE_*` virtual package overrides).
 
+use crate::activation::NATIVE_SUBDIR;
 use extendr_api::prelude::*;
 
 mod activation;
@@ -363,13 +364,13 @@ fn rt_test_https_server(
     .map_err(extendr_api::Error::from)
 }
 
-/// The conda subdir rattlerthis was compiled for (`Platform::current()`).
+/// The conda subdir rattlerthis was compiled for (`NATIVE_SUBDIR`).
 ///
 /// @noRd
 #[extendr]
 fn rt_native_platform() -> String {
     runtime::note_entry();
-    rattler_conda_types::Platform::current().to_string()
+    NATIVE_SUBDIR.to_string()
 }
 
 /// The effective channel URLs (without trailing slashes) for `channels` and

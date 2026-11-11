@@ -19,7 +19,7 @@ fn script_pkg(name: &str, version: &str) -> TestPkg {
     let record = PackageRecord::new(
         PackageName::new_unchecked(name),
         VersionWithSource::from_str(version).unwrap(),
-        "0".into(),
+        rattler_conda_types::package::BuildString::new_unchecked("0"),
     );
     let mut pkg = TestPkg::new(name, version);
     for kind in [linkscripts::PRE_LINK, linkscripts::POST_LINK, linkscripts::PRE_UNLINK] {

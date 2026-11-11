@@ -1,0 +1,20 @@
+[workspace]
+name = "rattlerthis-logo"
+description = "Draft hex logos for rattlerthis: SVG generator and PNG previews"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
+
+[dependencies]
+python = "3.13.*"
+# rsvg-convert renders the SVG drafts to PNG
+librsvg = "*"
+# The text is written as glyph outlines (paths) taken from DejaVu Sans Mono
+# Bold, so the SVGs need no font. font-ttf-dejavu-sans-mono ships only
+# DejaVuSans.ttf; font-ttf-dejavu has the whole family.
+fonttools = "*"
+font-ttf-dejavu = "*"
+
+[tasks]
+svg = { cmd = "python make_logos.py drafts", description = "Write the four SVG drafts to drafts/" }
+png = { cmd = "python make_logos.py drafts --png", description = "Write the SVG drafts and render them to PNG" }
+logo = { cmd = "python make_logos.py ../../man/figures --logo", description = "Write concept 1 as man/figures/logo.svg and logo.png" }
