@@ -1,7 +1,7 @@
 # `rattlerthis` as condathis's backend
 
 `rattlerthis` is condathis's `"rattler"` backend under condathis's backend
-contract version 2 (condathis 0.2.0.9010; `?condathis::register_backend`).
+contract version 2 (condathis 0.2.0; `?condathis::register_backend`).
 The current design is in `.github/devdocs/feat-initial-impl/PLAN.md`
 ("What rattlerthis is", "The backend functions"); this file keeps the
 decisions that shaped it and the history, in short. "The backend spec" is

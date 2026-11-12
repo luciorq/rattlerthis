@@ -24,7 +24,7 @@ what the package is now.
 - No exported functions, no options and no environment variables of its
   own. The generic Conda variables `CONDA_OVERRIDE_*` are honored, as
   micromamba honors them.
-- `Imports: condathis (>= 0.2.0.9010)`, the version with contract v2;
+- `Imports: condathis (>= 0.2.0)`, the first release with contract v2;
   `NAMESPACE` imports nothing from it (every call is `condathis::`, so a
   reload of condathis never leaves stale imported closures). condathis does
   not declare rattlerthis: it knows the package from an internal table

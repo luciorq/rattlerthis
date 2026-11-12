@@ -35,7 +35,7 @@
 #
 # Requirements
 # ------------
-# * condathis (>= 0.2.0.9010), contract version 2.
+# * condathis (>= 0.2.0), contract version 2.
 # * Local channels for everything but the last test: condathis's own
 #   (`polyglot`, noarch, no dependencies) and the test channels of
 #   fixtures/channels. The last test uses conda-forge.

@@ -3,7 +3,7 @@
 #' The object that `.onLoad()` registers with
 #' `condathis::register_backend()` under the name `"rattler"`: a list of
 #' the backend functions of condathis's contract (version 2, condathis
-#' 0.2.0.9010; see `?condathis::register_backend`), with its own class.
+#' 0.2.0; see `?condathis::register_backend`), with its own class.
 #' condathis registers each function as an S3 method of its generic of the
 #' same name, so this package declares no S3 methods.
 #'
