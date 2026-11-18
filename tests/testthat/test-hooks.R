@@ -509,7 +509,7 @@ test_that("pip steps run micromamba's commands with the environment's programs",
   expect_identical(base[["CONDA_PREFIX"]], "")
   expect_identical(base[["CONDA_SHLVL"]], "0")
   expect_identical(base[["RT_HOOKS_KEEP"]], "kept")
-  expect_identical(base[["R_HOME"]], "")
+  expect_false("R_HOME" %in% names(base))
   expect_identical(
     base[["CONDA_ENVS_PATH"]],
     as.character(fs::path(rattler_root(), "envs"))
@@ -1182,8 +1182,8 @@ test_that("a spinner that cli cannot build does not fail a create", {
 })
 
 test_that("the pip steps get the variables that condathis gives the commands of an environment", {
-  # rattler_pip_base_env() copies condathis's clean overlay
-  # (`get_clean_conda_envvars()` with `child_conda_dirs()`), which
+  # rattler_pip_base_env() passes the directories of condathis's clean
+  # overlay (`get_clean_conda_envvars()` with `child_conda_dirs()`), which
   # condathis does not export: this keeps the two lists equal.
   get_clean <- getFromNamespace("get_clean_conda_envvars", "condathis")
   child_dirs <- getFromNamespace("child_conda_dirs", "condathis")
@@ -1215,4 +1215,56 @@ test_that("the pip steps get the variables that condathis gives the commands of 
     unname(env[["XDG_CACHE_HOME"]]),
     as.character(rattler_tool_cache_dir())
   )
+})
+
+test_that("the pip steps start from the block that condathis gives every child", {
+  # As a command of the environment before activation (`base_env`): the
+  # activation of the R session undone, the variables of R's startup
+  # removed, then the clean overlay.
+  build_child_env <- getFromNamespace("build_child_env", "condathis")
+  child_dirs <- getFromNamespace("child_conda_dirs", "condathis")
+  env_dir <- file.path(rattler_root(), "envs", "rt-hooks-pip-env")
+  # An R session started in an activated Conda environment, with R's
+  # variables and one of the user.
+  host <- normalizePath(
+    withr::local_tempdir(pattern = "rt-hooks-host-"),
+    winslash = "/"
+  )
+  dir.create(file.path(host, "conda-meta"))
+  dir.create(file.path(host, "bin"))
+  host_bin <- normalizePath(file.path(host, "bin"), winslash = "/")
+  withr::local_envvar(
+    PATH = paste(host_bin, Sys.getenv("PATH"), sep = .Platform$path.sep),
+    CONDA_PREFIX = host,
+    CONDA_SHLVL = "2",
+    CONDA_PREFIX_1 = host,
+    CONDA_DEFAULT_ENV = "rt-hooks-host",
+    R_LIBS_USER = "rt-hooks-r-libs",
+    `_R_RT_HOOKS_` = "set",
+    RT_HOOKS_KEEP = "kept"
+  )
+  env <- rattler_pip_base_env("rt-hooks-tmp")
+  expect_identical(
+    env,
+    build_child_env(
+      tmp_dir = "rt-hooks-tmp",
+      conda_dirs = child_dirs(new_backend_rattler(), env_dir = env_dir),
+      overlay = c(XDG_CACHE_HOME = as.character(rattler_tool_cache_dir()))
+    )
+  )
+  path_name <- names(env)[toupper(names(env)) == "PATH"]
+  expect_length(path_name, 1L)
+  entries <- gsub("\\\\", "/", path_entries(env[[path_name]]))
+  expect_false(host_bin %in% entries)
+  expect_true(length(entries) > 0L)
+  expect_identical(env[["CONDA_PREFIX"]], "")
+  expect_identical(env[["CONDA_SHLVL"]], "0")
+  expect_identical(env[["CONDA_DEFAULT_ENV"]], "")
+  expect_false("CONDA_PREFIX_1" %in% names(env))
+  expect_identical(grep("^_?R_", names(env), value = TRUE), character(0L))
+  expect_identical(env[["RT_HOOKS_KEEP"]], "kept")
+  expect_identical(env[["TMPDIR"]], "rt-hooks-tmp")
+  # The session itself is unchanged.
+  expect_identical(Sys.getenv("CONDA_PREFIX_1"), host)
+  expect_identical(Sys.getenv("R_LIBS_USER"), "rt-hooks-r-libs")
 })

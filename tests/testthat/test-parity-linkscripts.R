@@ -307,7 +307,7 @@ test_that("an explicit environment file runs or reports the scripts", {
   for (method in pr_methods) {
     out <- pr_with_warnings(
       condathis::create_env(
-        env_file = env_file,
+        condathis::env_definition(env_file),
         env_name = env_names[[method]],
         method = method,
         verbose = "silent"

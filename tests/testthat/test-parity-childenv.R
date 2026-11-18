@@ -8,9 +8,13 @@
 # its reason. condathis activates the environment first and then starts
 # the command itself for both backends, with run(), run_bin() and
 # run_pipeline() (R-4 is closed: micromamba's run() no longer goes through
-# `micromamba run`). Also: an activation without bash (P-A8), the exit
-# status of a command killed by a signal (P-A2), and activate.d scripts,
-# which both backends run (R-1), with what they print, unset or fail.
+# `micromamba run`). Without activation (`activate = FALSE`), condathis
+# sets a fixed activation itself and calls no backend code. Every command
+# gets one activation level (`CONDA_SHLVL` and `MAMBA_SHLVL` "1", empty
+# prompt modifiers) and none of the R session's `R_*` variables. Also: an
+# activation without bash (P-A8), the exit status of a command killed by
+# a signal (P-A2), and activate.d scripts, which both backends run (R-1),
+# with what they print, unset or fail.
 
 # The stale settings of the session: none of them may reach a child.
 pr_dirty_session <- c(
@@ -22,14 +26,24 @@ pr_dirty_session <- c(
   CONDA_SHLVL = "1",
   CONDA_DEFAULT_ENV = "rt-bogus",
   CONDA_PROMPT_MODIFIER = "(rt-bogus) ",
+  MAMBA_SHLVL = "3",
+  MAMBA_PROMPT_MODIFIER = "(rt-bogus) ",
+  # Variables that only R reads never reach a command, also ones the user
+  # set.
+  R_RT_PR_SESSION = "dropped",
+  `_R_RT_PR_SESSION_` = "dropped",
   RT_PR_SESSION = "kept"
 )
 
+# The names of `pr_dirty_session` that no child may have.
+pr_r_session_names <- c("R_RT_PR_SESSION", "_R_RT_PR_SESSION_")
+
 # The environment of a child started by `fn` ("run", "run_bin",
-# "run_bin_noact", that is run_bin() with `activate = FALSE`, or
-# "run_pipeline", whose first step prints and second copies) in
-# `env_name`: a named character vector, names in upper case on Windows,
-# without processx's per-process marker variables (`PROCESSX_*`).
+# "run_pipeline", whose first step prints and second copies, or one of
+# them with `activate = FALSE`: "run_noact", "run_bin_noact",
+# "run_pipeline_noact") in `env_name`: a named character vector, names in
+# upper case on Windows, without processx's per-process marker variables
+# (`PROCESSX_*`).
 pr_child_env <- function(fn, method, env_name) {
   args <- rscript_print_env_args()
   res <- switch(
@@ -40,6 +54,14 @@ pr_child_env <- function(fn, method, env_name) {
       env_name = env_name,
       method = method,
       verbose = "silent"
+    ),
+    run_noact = condathis::run(
+      rscript_path(),
+      args,
+      env_name = env_name,
+      method = method,
+      verbose = "silent",
+      activate = FALSE
     ),
     run_bin = condathis::run_bin(
       rscript_path(),
@@ -62,6 +84,14 @@ pr_child_env <- function(fn, method, env_name) {
       env_name = env_name,
       method = method,
       verbose = "silent"
+    ),
+    run_pipeline_noact = condathis::run_pipeline(
+      condathis::run_step(rscript_path(), args),
+      condathis::run_step(rscript_path(), rscript_cat_args()),
+      env_name = env_name,
+      method = method,
+      verbose = "silent",
+      activate = FALSE
     )
   )
   env <- parse_env_output(condathis::parse_output(res))
@@ -70,6 +100,16 @@ pr_child_env <- function(fn, method, env_name) {
   }
   return(env[!grepl("^PROCESSX_", names(env))])
 }
+
+# Every way of starting a command that the tests below compare.
+pr_run_fns <- c(
+  "run",
+  "run_bin",
+  "run_pipeline",
+  "run_noact",
+  "run_bin_noact",
+  "run_pipeline_noact"
+)
 
 # Replaces every spelling of the directory `path` in `x` by `token`: with
 # `/` for `\`, and without case on Windows.
@@ -156,7 +196,7 @@ test_that("children of both backends get the same environment, but for R-5", {
   session <- Sys.getenv()
   unix <- isFALSE(is_windows())
 
-  for (fn in c("run", "run_bin", "run_bin_noact", "run_pipeline")) {
+  for (fn in pr_run_fns) {
     raw <- list()
     env <- list()
     for (method in pr_methods) {
@@ -169,31 +209,28 @@ test_that("children of both backends get the same environment, but for R-5", {
     }
     mm <- env$micromamba
     rt <- env$rattler
-    activated <- isFALSE(identical(fn, "run_bin_noact"))
+    activated <- isFALSE(endsWith(fn, "_noact"))
 
-    # The activation and condathis's own settings, equal on both: the stale
-    # session values are gone.
+    # The activation and condathis's own settings, equal on both, with and
+    # without activation (the fixed activation names the environment too):
+    # the stale session values are gone, and every command runs at one
+    # activation level, with empty prompt modifiers.
     for (method in pr_methods) {
       child <- env[[method]]
       info <- paste(fn, method)
-      expect_identical(
-        child[["CONDA_SHLVL"]],
-        if (isTRUE(activated)) "1" else "0",
-        info = info
-      )
+      expect_identical(child[["CONDA_SHLVL"]], "1", info = info)
+      expect_identical(child[["MAMBA_SHLVL"]], "1", info = info)
+      expect_identical(child[["CONDA_PROMPT_MODIFIER"]], "", info = info)
+      expect_identical(child[["MAMBA_PROMPT_MODIFIER"]], "", info = info)
       expect_identical(
         child[["CONDA_PREFIX"]],
-        if (isTRUE(activated)) "<ROOT>/envs/<ENV>" else "",
+        "<ROOT>/envs/<ENV>",
         info = info
       )
-      expect_identical(
-        child[["CONDA_DEFAULT_ENV"]],
-        if (isTRUE(activated)) "<ENV>" else "",
-        info = info
-      )
+      expect_identical(child[["CONDA_DEFAULT_ENV"]], "<ENV>", info = info)
       expect_identical(child[["CONDA_ENVS_PATH"]], "<ROOT>/envs", info = info)
-      expect_identical(child[["MAMBA_SHLVL"]], "0", info = info)
       expect_identical(child[["RT_PR_SESSION"]], "kept", info = info)
+      expect_false(any(pr_r_session_names %in% names(child)), info = info)
       # Each backend's own package cache (R-5, decision Q9): micromamba's
       # `<root>/pkgs`, and for rattler `<rattler root>/conda-pkgs`, which
       # condathis owns and clean_cache() empties.
@@ -326,6 +363,60 @@ test_that("children of both backends get the same environment, but for R-5", {
   }
 })
 
+test_that("no variable of the R session's own reaches a command on either backend", {
+  # The children above are Rscript processes, which set R's variables
+  # again when they start. A program that is not R shows what condathis
+  # gives the command: no `R_HOME` and no other `R_*` or `_R_*` variable,
+  # with and without activation, with both backends.
+  local_parity_micromamba()
+  env_names <- pr_env_names("rt-pce-rvars")
+  pr_defer_remove_envs(env_names)
+  for (method in pr_methods) {
+    condathis::create_env(
+      env_name = env_names[[method]],
+      channels = channel_url("chA"),
+      method = method,
+      verbose = "silent"
+    )
+  }
+  withr::local_envvar(pr_dirty_session)
+  expect_true(nzchar(Sys.getenv("R_HOME")))
+  if (isTRUE(is_windows())) {
+    cmd <- "cmd"
+    args <- c("/d", "/c", "set")
+  } else {
+    cmd <- "env"
+    args <- character(0L)
+  }
+  for (method in pr_methods) {
+    for (fn in c("run", "run_bin")) {
+      for (activate in c(TRUE, FALSE)) {
+        info <- paste(fn, method, activate)
+        res <- getExportedValue("condathis", fn)(
+          cmd,
+          args,
+          env_name = env_names[[method]],
+          method = method,
+          verbose = "silent",
+          activate = activate
+        )
+        env <- parse_env_output(strsplit(res$stdout, "\r?\n")[[1L]])
+        keys <- names(env)
+        if (isTRUE(is_windows())) {
+          keys <- toupper(keys)
+        }
+        expect_true("PATH" %in% keys, info = info)
+        expect_identical(env[["RT_PR_SESSION"]], "kept", info = info)
+        expect_identical(
+          grep("^_?R_", keys, value = TRUE),
+          character(0L),
+          info = info
+        )
+      }
+    }
+  }
+})
+
 # The value of a variable, or `NA` when the environment does not have it.
 pr_value <- function(env, name) {
   if (isTRUE(name %in% names(env))) {
@@ -401,7 +492,7 @@ test_that("an environment given by env_path() runs the same with both backends (
     } else {
       "<TARGET>"
     }
-    for (fn in c("run", "run_bin", "run_bin_noact", "run_pipeline")) {
+    for (fn in pr_run_fns) {
       env <- list()
       for (method in pr_methods) {
         env[[method]] <- normalize(
@@ -410,25 +501,34 @@ test_that("an environment given by env_path() runs the same with both backends (
           root = roots[[method]]
         )
       }
-      activated <- isFALSE(identical(fn, "run_bin_noact"))
+      activated <- isFALSE(endsWith(fn, "_noact"))
       for (method in pr_methods) {
         child <- env[[method]]
         info <- paste("env of", target, fn, method)
         expect_identical(
           pr_value(child, "CONDA_PREFIX"),
-          if (isTRUE(activated)) "<TARGET>" else "",
+          "<TARGET>",
           info = info
         )
+        # The fixed activation names the environment by its directory.
         expect_identical(
           pr_value(child, "CONDA_DEFAULT_ENV"),
-          if (isTRUE(activated)) env_label else "",
+          if (isTRUE(activated)) env_label else "<TARGET>",
+          info = info
+        )
+        expect_identical(pr_value(child, "CONDA_SHLVL"), "1", info = info)
+        expect_identical(pr_value(child, "MAMBA_SHLVL"), "1", info = info)
+        expect_identical(
+          pr_value(child, "CONDA_PROMPT_MODIFIER"),
+          "",
           info = info
         )
         expect_identical(
-          pr_value(child, "CONDA_SHLVL"),
-          if (isTRUE(activated)) "1" else "0",
+          pr_value(child, "MAMBA_PROMPT_MODIFIER"),
+          "",
           info = info
         )
+        expect_false(any(pr_r_session_names %in% names(child)), info = info)
         expect_identical(
           pr_value(child, "RT_PCE_EP"),
           if (isTRUE(activated)) "on" else NA_character_,
@@ -461,15 +561,6 @@ test_that("an environment given by env_path() runs the same with both backends (
           info = info
         )
         expect_identical(pr_value(child, "MAMBA_ROOT_PREFIX"), "", info = info)
-      }
-      if (isTRUE(activated)) {
-        for (method in pr_methods) {
-          expect_identical(
-            pr_value(env[[method]], "CONDA_PROMPT_MODIFIER"),
-            paste0("(", env_label, ") "),
-            info = paste("env of", target, fn, method)
-          )
-        }
       }
       # The allowlist of R-5, as for environments given by name.
       mm <- env$micromamba
@@ -688,12 +779,12 @@ test_that("a command killed by a signal has the same status on both backends", {
     run_status <- 1L
     run_bin_status <- 1L
   } else {
-    # run() reports a command killed by signal 9 as 128 + 9, as
-    # `micromamba run` did (P-A2, Q24); run_bin() keeps processx's -9.
+    # run() and run_bin() report a command killed by signal 9 as 128 + 9,
+    # as `micromamba run` did (P-A2, Q24).
     cmd <- "sh"
     args <- c("-c", "kill -9 $$")
     run_status <- 137L
-    run_bin_status <- -9L
+    run_bin_status <- 137L
   }
   for (method in pr_methods) {
     res <- condathis::run(

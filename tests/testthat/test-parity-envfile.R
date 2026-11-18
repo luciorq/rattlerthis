@@ -16,8 +16,12 @@
 
 # Creates an environment from a fixture with `method`; returns the error
 # (or `NULL`), the packages (`"name version channel"`) and whether the
-# environment and its directory exist afterwards.
+# environment and its directory exist afterwards. The file is given with
+# `env_file =`, whose rules these tests compare (command-line channels
+# come first, and explicit and lock files ignore them). condathis
+# deprecates that argument, so its warning is quieted here.
 envfile_create <- function(env_name, fixture, method, ...) {
+  withr::local_options(lifecycle_verbosity = "quiet")
   captured <- psolve_capture(condathis::create_env(
     env_file = envfile_fixture(fixture),
     env_name = env_name,
@@ -274,7 +278,7 @@ test_that("a byte order mark in a spec file is read as the C library reads it", 
     env_name <- psolve_env_name("rt-penv-bom", method)
     defer_remove_env(env_name, method = method)
     captured <- psolve_capture(condathis::create_env(
-      env_file = spec_file,
+      condathis::env_definition(spec_file),
       env_name = env_name,
       channels = channel_url("chA"),
       method = method,

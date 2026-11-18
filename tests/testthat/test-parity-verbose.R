@@ -166,7 +166,7 @@ test_that("both backends say at \"full\" that YAML variables are not used", {
     pr_defer_remove_envs(env_names)
     for (method in pr_methods) {
       out <- pr_capture(condathis::create_env(
-        env_file = envfile_fixture("e4.yml"),
+        condathis::env_definition(envfile_fixture("e4.yml")),
         env_name = env_names[[method]],
         method = method,
         verbose = verbose
@@ -244,10 +244,12 @@ test_that("queries print nothing for rattler; micromamba echoes `env list`", {
         expect_length(rt$messages, 0L)
       }
       # micromamba lists environments with its binary and echoes that
-      # command; it reads the package records from the file system, but at
-      # "full" through `micromamba list`, echoed as well.
+      # command; it checks that one environment exists from the file system
+      # (condathis 0.2.0), so nothing is echoed. It reads the package records
+      # from the file system, but at "full" through `micromamba list`, echoed
+      # as well.
       if (
-        isTRUE(op %in% c("list_envs", "env_exists")) &&
+        identical(op, "list_envs") &&
           isTRUE(verbose %in% c("cmd", "full"))
       ) {
         expect_match(pr_joined(mm$stdout), "env list", fixed = TRUE)
@@ -557,7 +559,7 @@ test_that("rattler's request line names the options it was given", {
   defer_remove_env(env_name)
   env_file <- envfile_fixture("e1.yml")
   out <- pr_capture(condathis::create_env(
-    env_file = env_file,
+    condathis::env_definition(env_file),
     env_name = env_name,
     channels = channel_a,
     channel_priority = "disabled",

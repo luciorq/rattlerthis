@@ -328,7 +328,7 @@ test_that("additional channels come after the call's channels and before a file'
     steps$yaml <- create_step(
       env_names[["yaml"]],
       method,
-      env_file = yaml_file,
+      condathis::env_definition(yaml_file),
       channels = chan_c,
       additional_channels = chan_a
     )

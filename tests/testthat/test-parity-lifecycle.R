@@ -278,7 +278,7 @@ test_that("an existing environment is kept, refused or replaced alike, and a fai
     ))
     # An environment file is never compared: refused.
     out$file <- psolve_capture(condathis::create_env(
-      env_file = envfile_fixture("e5.txt"),
+      condathis::env_definition(envfile_fixture("e5.txt")),
       env_name = env_name,
       channels = chan_a,
       method = method,
@@ -708,7 +708,7 @@ test_that("installed files keep the archive's modes on both backends, whatever t
         verbose = "silent"
       )
       condathis::create_env(
-        env_file = envfile_fixture("e6.txt"),
+        condathis::env_definition(envfile_fixture("e6.txt")),
         env_name = envs$explicit,
         method = method,
         verbose = "silent"

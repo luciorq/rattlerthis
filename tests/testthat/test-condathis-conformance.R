@@ -1028,7 +1028,7 @@ test_that("environment files and every channel priority work", {
   defer_remove_env(env_name)
   res <- condathis::create_env(
     env_name = env_name,
-    env_file = env_file,
+    condathis::env_definition(env_file),
     channels = channel,
     method = conformance_backend,
     verbose = "silent"
@@ -1089,7 +1089,7 @@ test_that("requests the backend cannot honor fail with condathis_backend_unsuppo
     cnd <- expect_backend_failure(
       condathis::create_env(
         env_name = env_name,
-        env_file = env_file,
+        condathis::env_definition(env_file),
         channels = channel,
         method = conformance_backend,
         verbose = "silent"

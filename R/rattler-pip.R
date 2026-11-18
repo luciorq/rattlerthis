@@ -11,12 +11,12 @@
 #'   `mambaf<10 random letters and digits>` in `cwd` (the directory of the
 #'   environment file), which is deleted afterwards.
 #' * The command is micromamba's (see `rattler_pip_command()`), started in
-#'   `cwd`, in the activated environment: the variables condathis gives
-#'   the commands of a rattler environment and micromamba gives its own
-#'   (see `rattler_pip_base_env()`), with the activation of the environment
-#'   on top (see `rattler_activation()`). On Windows, micromamba's wrapper
-#'   also sets `PYTHONIOENCODING=utf-8` and `PYTHONUTF8=1`, and so does
-#'   this.
+#'   `cwd`, in the activated environment: the block condathis gives the
+#'   commands of a rattler environment before activation, with the cache
+#'   directory micromamba gives its own (see `rattler_pip_base_env()`), and
+#'   the activation of the environment on top (see `rattler_activation()`).
+#'   On Windows, micromamba's wrapper also sets `PYTHONIOENCODING=utf-8`
+#'   and `PYTHONUTF8=1`, and so does this.
 #' * Output: `"\nInstalling <manager> packages: <specs>\n"` and the output
 #'   of the command go to `stdout` of the result, and are printed at the
 #'   level `"full"` only, as condathis shows micromamba's output; at the
@@ -325,16 +325,22 @@ rattler_pip_spec_file <- function(dir, specs, call = rlang::caller_env()) {
 
 #' The environment of a pip step before activation
 #'
-#' The R session's environment with the variables that condathis gives
-#' every command of a rattler environment (its clean overlay:
-#' `get_clean_conda_envvars()` with `child_conda_dirs()` in condathis), as
-#' micromamba's pip gets them from condathis's micromamba process: a new
-#' `TMPDIR`, the Conda settings of the session cleared, `CONDA_ENVS_PATH`
-#' (`<root>/envs`), `CONDA_PKGS_DIRS` and `MAMBA_PKGS_DIRS`
-#' (`<root>/conda-pkgs`) of this backend, and `R_HOME` empty. condathis
-#' runs micromamba with `XDG_CACHE_HOME=<micromamba root>/cache`, so pip
-#' keeps its cache there on Linux; here it is `<rattler root>/cache`,
-#' which `backend_clean_cache()` empties.
+#' The block that condathis gives every child process of an environment
+#' before activation (`build_child_env()` in condathis, the `base_env` of
+#' `backend_resolve_run()`), as micromamba's pip gets it from condathis's
+#' micromamba process: the R session's environment without the activation
+#' of the R session and without what R's own startup set (every `R_*` and
+#' `_R_*` variable included), then condathis's clean overlay: a new
+#' `TMPDIR`, the Conda settings of the session cleared, and
+#' `CONDA_ENVS_PATH` (`<root>/envs`), `CONDA_PKGS_DIRS` and
+#' `MAMBA_PKGS_DIRS` (`<root>/conda-pkgs`) of this backend. condathis runs
+#' micromamba with `XDG_CACHE_HOME=<micromamba root>/cache`, so pip keeps
+#' its cache there on Linux; here it is `<rattler root>/cache`, which
+#' `backend_clean_cache()` empties.
+#'
+#' condathis exports no function for this block and does not pass it to
+#' `backend_create_env()`, so it is built with condathis's own function
+#' (see `condathis_internal()`).
 #'
 #' @param tmp_dir Character string, the step's temporary directory.
 #'
@@ -344,40 +350,50 @@ rattler_pip_spec_file <- function(dir, specs, call = rlang::caller_env()) {
 #' @noRd
 rattler_pip_base_env <- function(tmp_dir) {
   root <- rattler_root()
-  pkgs_dir <- as.character(fs::path(root, "conda-pkgs"))
-  overrides <- list(
-    TMPDIR = as.character(tmp_dir),
-    CONDA_SHLVL = "0",
-    MAMBA_SHLVL = "0",
-    CONDA_ENVS_PATH = as.character(fs::path(root, "envs")),
-    CONDA_ENVS_DIRS = NULL,
-    CONDA_ROOT_PREFIX = "",
-    CONDA_PREFIX = "",
-    MAMBA_ENVS_PATH = "",
-    MAMBA_ENVS_DIRS = "",
-    MAMBA_ROOT_PREFIX = "",
-    MAMBA_PREFIX = "",
-    CONDARC = "",
-    MAMBARC = "",
-    CONDA_PROMPT_MODIFIER = "",
-    MAMBA_PROMPT_MODIFIER = "",
-    CONDA_DEFAULT_ENV = "",
-    MAMBA_DEFAULT_ENV = "",
-    CONDA_PKGS_DIRS = pkgs_dir,
-    MAMBA_PKGS_DIRS = pkgs_dir,
-    R_HOME = "",
-    XDG_CACHE_HOME = as.character(rattler_tool_cache_dir())
+  build_child_env <- condathis_internal("build_child_env")
+  env <- build_child_env(
+    tmp_dir = as.character(tmp_dir),
+    conda_dirs = list(
+      envs_dir = as.character(fs::path(root, "envs")),
+      pkgs_dir = as.character(fs::path(root, "conda-pkgs"))
+    ),
+    overlay = c(XDG_CACHE_HOME = as.character(rattler_tool_cache_dir()))
   )
-  session_env <- Sys.getenv()
-  env <- as.character(session_env)
-  names(env) <- names(session_env)
-  for (name in names(overrides)) {
-    env <- env[!rattler_name_matches(names(env), name)]
-    if (isFALSE(is.null(overrides[[name]]))) {
-      env[[name]] <- overrides[[name]]
-    }
-  }
   return(env)
+}
+
+#' A function of condathis that it does not export
+#'
+#' Looked up in condathis's namespace at every call, so a reload of
+#' condathis (see `register_condathis_backend()`) is followed. A
+#' condathis without it aborts with class `rattlerthis_error`.
+#'
+#' @param name Character string, the name of the function.
+#' @param call Environment reported as the caller.
+#'
+#' @returns The function.
+#'
+#' @keywords internal
+#' @noRd
+condathis_internal <- function(name, call = rlang::caller_env()) {
+  fn <- get0(
+    name,
+    envir = asNamespace("condathis"),
+    mode = "function",
+    inherits = FALSE
+  )
+  if (is.null(fn)) {
+    rlang::abort(
+      message = paste0(
+        "This version of condathis has no function `",
+        name,
+        "()`, which rattlerthis needs."
+      ),
+      class = "rattlerthis_error",
+      call = call
+    )
+  }
+  return(fn)
 }
 
 #' Set variables in an environment block

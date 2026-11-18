@@ -1,5 +1,5 @@
 # Parity of the pip steps of environment files (R-8, R-28):
-# `create_env(env_file = )` with `method = "micromamba"` and
+# `create_env(env_definition())` with `method = "micromamba"` and
 # `method = "rattler"`, with a real python from conda-forge and the local
 # wheel of fixtures/pip (`rtwheel`, built by tools/make-test-wheel.py), so
 # pip never asks PyPI (`PIP_NO_INDEX=1`). After the Conda packages are
@@ -77,7 +77,7 @@ ppip_yaml <- function(..., env = parent.frame()) {
 # CRLF on Windows).
 ppip_create <- function(env_name, env_file, method, verbose = "silent") {
   captured <- psolve_capture(condathis::create_env(
-    env_file = env_file,
+    condathis::env_definition(env_file),
     env_name = env_name,
     method = method,
     verbose = verbose

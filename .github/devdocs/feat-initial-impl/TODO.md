@@ -68,8 +68,24 @@ whether the gateway still emits duplicate records (below).
   (Rtools45, `x86_64-pc-windows-gnu` host toolchain); the
   `aarch64-pc-windows-gnullvm` cross build links into an ARM64 DLL that
   imports only system DLLs and `R.dll`.
+- **2026-11-17, condathis 0.2.0 child environments** (condathis's
+  `feat-run-unify` devdocs, D0 to D15): the parity tests expect the new
+  values with both backends (one activation level, `CONDA_SHLVL` and
+  `MAMBA_SHLVL` `"1"` and empty prompt modifiers for every command, the
+  fixed activation of `activate = FALSE` for `run()`, `run_bin()` and
+  `run_pipeline()`, status `128 + n` for a command killed by signal `n`,
+  no `R_*` or `_R_*` variable in a command). The pip steps of a create
+  start from condathis's own child block (`rattler_pip_base_env()`), so
+  they get condathis's isolation from the R session too.
 
 ## Open
+
+- [ ] `rattler_pip_base_env()` calls condathis's internal
+      `build_child_env()`: condathis neither exports that block nor passes
+      it to `backend_create_env()`. Switch to a public way once condathis
+      offers one (for example an optional `base_env` argument of
+      `backend_create_env()` and `backend_install()`, passed like
+      `definition`).
 
 - [x] `.github/workflows/win-arm64.yaml` on `windows-11-arm`: the first
       run (2026-11-05, run 41948564276) built, loaded and tested the ARM64
