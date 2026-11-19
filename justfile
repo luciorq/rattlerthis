@@ -5,6 +5,19 @@ package_name := 'rattlerthis'
 
 github_org := 'luciorq'
 
+# On Linux, rattlerthis links the system OpenSSL found through `pkg-config`
+# (`openssl-sys`). With R from a conda/pixi environment (e.g. pixi global
+# `r-base`) that OpenSSL lives in R's environment, and R's activation finds
+# it. But a `cargo` from another conda/pixi environment (e.g. pixi global
+# `rust`) activates that one, and the conda `pkg-config` wrapper then
+# searches `$CONDA_PREFIX`, the Rust environment, and fails with "Could not
+# find directory of OpenSSL installation". `PKG_CONFIG_PATH` is searched
+# first, so every recipe gets the directory of the `openssl.pc` that R's
+# own `pkg-config` sees, in front of any existing value. With a system
+# OpenSSL this is the system directory, which changes nothing. Not needed on
+# macOS and Windows (native TLS).
+export PKG_CONFIG_PATH := if os() == "linux" { `Rscript -e 'd <- tryCatch(suppressWarnings(system2("pkg-config", c("--variable=pcfiledir", "openssl"), stdout = TRUE, stderr = FALSE)), error = function(e) character()); d <- c(utils::head(d, 1L), Sys.getenv("PKG_CONFIG_PATH")); cat(paste(d[!is.na(d) & nzchar(d)], collapse = ":"))'` } else { env_var_or_default("PKG_CONFIG_PATH", "") }
+
 @default:
   just --choose
 
@@ -259,6 +272,45 @@ link-dev-docs branch_name:
 # =============================================================================
 # Rattlerthis specific Tasks
 # =============================================================================
+
+# Compile and install the package (release build, as users get it) into the
+# default library (with pixi global R, the `r-base` environment), or into
+# `lib` when given. condathis is installed first, into the same library:
+# rattlerthis registers itself as a condathis backend in `.onLoad()`, and an
+# older condathis fails that load ("does not implement the full backend
+# contract"). condathis comes from the source tree `condathis_src`, relative
+# to this directory (default: the sibling checkout, with its uncommitted
+# changes), or from GitHub when
+# that directory does not exist. Both packages are built from source
+# tarballs in a temporary directory, never in place: an in-place
+# `R CMD INSTALL` runs `cleanup`, and a release build deletes
+# `src/rust/target`. The OpenSSL lookup comes from `PKG_CONFIG_PATH` above.
+#
+# Compile and Install the Package and the Latest condathis
+install-build lib='' condathis_src='../condathis':
+  #!/usr/bin/env bash
+  \builtin set -euo pipefail;
+  work_dir="$(\mktemp -d)";
+  trap '\rm -rf "${work_dir}"' EXIT;
+  \builtin echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-}";
+  lib_args=();
+  if [[ -n '{{ lib }}' ]]; then
+    \mkdir -p '{{ lib }}';
+    lib_args=(-l '{{ lib }}');
+  fi;
+  if [[ -f '{{ condathis_src }}/DESCRIPTION' ]]; then
+    \builtin echo "=== Installing condathis from {{ condathis_src }} ===";
+    condathis_dir="$(\realpath '{{ condathis_src }}')";
+    (\builtin cd "${work_dir}" && R CMD build --no-build-vignettes --no-manual --no-resave-data "${condathis_dir}" >/dev/null);
+    R CMD INSTALL "${lib_args[@]}" "${work_dir}"/condathis_*.tar.gz;
+  else
+    \builtin echo "=== {{ condathis_src }} not found: installing condathis from GitHub ===";
+    R -q -s -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak"); pak::pak("luciorq/condathis", lib = if (nzchar("{{ lib }}")) "{{ lib }}" else .libPaths()[[1L]], upgrade = FALSE, ask = FALSE)';
+  fi;
+  \builtin echo "=== Installing {{ package_name }} ===";
+  (\builtin cd "${work_dir}" && R CMD build --no-build-vignettes --no-manual --no-resave-data '{{ justfile_directory() }}' >/dev/null);
+  R CMD INSTALL "${lib_args[@]}" "${work_dir}"/{{ package_name }}_*.tar.gz;
+  R -q -s -e 'lib <- if (nzchar("{{ lib }}")) "{{ lib }}" else NULL; for (p in c("condathis", "{{ package_name }}")) cat(p, as.character(utils::packageVersion(p, lib.loc = lib)), "installed\n")';
 
 # Report the dependency graph's true MSRV and check it against both the value
 # declared in `src/rust/Cargo.toml`/`DESCRIPTION` and CRAN's own floor.
