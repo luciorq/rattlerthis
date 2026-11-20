@@ -292,9 +292,14 @@ test_that("children of both backends get the same environment, but for R-5", {
     expect_identical(rt[common], mm[common], info = fn)
 
     if (isTRUE(activated)) {
+      # The binary condathis runs: a pixi trampoline given as the
+      # micromamba path is resolved to the binary it starts.
       expect_identical(
         normalizePath(raw$micromamba[["MAMBA_EXE"]], winslash = "/"),
-        rt_test_state$micromamba,
+        normalizePath(
+          as.character(condathis:::get_best_micromamba_path()),
+          winslash = "/"
+        ),
         info = fn
       )
       mm_path <- pr_path_entries(mm[["PATH"]])

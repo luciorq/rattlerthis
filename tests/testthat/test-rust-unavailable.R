@@ -22,7 +22,10 @@ test_that("the backend of a build without Rust keeps condathis's contract", {
   expect_false(backend$backend_available(backend))
   # The real build has the Rust routines, and so the real backend.
   expect_true(rattler_rust_available())
-  expect_identical(names(new_backend_rattler()), names(new_backend_rattler(TRUE)))
+  expect_identical(
+    names(new_backend_rattler()),
+    names(new_backend_rattler(TRUE))
+  )
 })
 
 test_that("without Rust, method = 'rattler' fails with a condathis error and 'auto' never picks it", {
@@ -86,7 +89,15 @@ test_that("tools/config.R builds without Rust on WebAssembly", {
       )
     ),
     wd = pkg,
-    env = c("current", PATH = R.home("bin")),
+    # The temporary directory of that R is in `pkg`, which the test
+    # deletes: without `rm` on its PATH, R cannot delete it at exit.
+    env = c(
+      "current",
+      PATH = R.home("bin"),
+      TMPDIR = pkg,
+      TMP = pkg,
+      TEMP = pkg
+    ),
     error_on_status = FALSE
   )
   expect_identical(res$status, 0L, info = res$stderr)
